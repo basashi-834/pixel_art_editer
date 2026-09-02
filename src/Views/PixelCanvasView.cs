@@ -200,6 +200,7 @@ public sealed class PixelCanvasView : Control
             var (px, py) = ToPixel(pos);
             editor.CurrentTool.OnPointerDown(editor, px, py);
             e.Pointer.Capture(this);
+            RebuildBitmap();
             InvalidateVisual();
         }
     }
@@ -236,6 +237,7 @@ public sealed class PixelCanvasView : Control
         if (_painting)
         {
             editor.CurrentTool.OnPointerMove(editor, px, py);
+            RebuildBitmap();
             InvalidateVisual();
         }
     }

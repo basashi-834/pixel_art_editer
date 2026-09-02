@@ -51,14 +51,21 @@ internal static class Program
         double sx = origin.X + editor.CamOffsetX + 4 * editor.Zoom + editor.Zoom / 2.0;
         double sy = origin.Y + editor.CamOffsetY + 4 * editor.Zoom + editor.Zoom / 2.0;
         window.MouseDown(new Point(sx, sy), MouseButton.Left);
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 3; i++)
+        {
+            window.MouseMove(new Point(sx + i * editor.Zoom, sy));
+            Dispatcher.UIThread.RunJobs();
+        }
+        // Screenshot *before* releasing the mouse, to confirm the stroke is visible live mid-drag.
+        Save(window, outDir, "2a-mid-drag.png");
+        for (int i = 3; i < 6; i++)
         {
             window.MouseMove(new Point(sx + i * editor.Zoom, sy));
             Dispatcher.UIThread.RunJobs();
         }
         window.MouseUp(new Point(sx + 5 * editor.Zoom, sy), MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
-        Save(window, outDir, "2-drawn-stroke.png");
+        Save(window, outDir, "2b-drawn-stroke.png");
 
         // Undo through the real Ctrl+Z shortcut (verifies HotKey wiring, not just the model).
         window.KeyPressQwerty(PhysicalKey.Z, RawInputModifiers.Control);
