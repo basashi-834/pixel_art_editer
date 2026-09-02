@@ -42,7 +42,7 @@ sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
 |---|---|---|
 | **SDL2** | ウィンドウ生成・描画・入力 | 依存が軽く、Linux環境に標準的なパッケージ (`libsdl2-dev`) として存在し、`cmake`のconfig-modeにもそのまま対応。Nearest Neighbor拡大（`SDL_HINT_RENDER_SCALE_QUALITY=0` + `SDL_ScaleModeNearest`）や、ピクセル単位のストリーミングテクスチャ更新など、本アプリの要件と相性が良い。 |
 | **stb_image.h / stb_image_write.h**（[nothings/stb](https://github.com/nothings/stb)） | PNG読み込み・書き出し | ヘッダオンリーでビルド設定が不要、依存ライブラリが増えない。RGBA8888のPNGを実解像度のまま読み書きできる。`third_party/stb/` にベンダリング済み（Public Domain / MIT license）。 |
-| **SDL2_ttf** + 埋め込み**PixelMplus10**フォント（[itouhiro/PixelMplus](https://github.com/itouhiro/PixelMplus)、M+ FONT LICENSE） | メニュー・ツールバー・ステータスバー等のUI文字描画（日本語/英語） | 日本語（ひらがな・カタカナ・JIS第1/第2水準漢字）を表示するには、ASCIIのみの自前ビットマップフォントでは不可能なため、SDL2_ttfを導入。フォントはドット絵調のPixelMplus10を採用し、本エディタの見た目に合わせつつ英語・日本語を同じフォント1つで描画できるようにしている。フォントファイルは `src/PixelMplusFontData.h` にC配列として埋め込み済みで、実行時に外部ファイルを探す必要がない（単体で完結した実行ファイルにできる）。ライセンス全文は `third_party/pixelmplus/LICENSE_M+FONTS.txt`。 |
+| **SDL2_ttf** + **PixelMplus10**フォント（[itouhiro/PixelMplus](https://github.com/itouhiro/PixelMplus)、M+ FONT LICENSE） | メニュー・ツールバー・ステータスバー等のUI文字描画（日本語/英語） | 日本語（ひらがな・カタカナ・JIS第1/第2水準漢字）を表示するには、ASCIIのみの自前ビットマップフォントでは不可能なため、SDL2_ttfを導入。フォントはドット絵調のPixelMplus10を採用し、本エディタの見た目に合わせつつ英語・日本語を同じフォント1つで描画できるようにしている。フォント本体（`third_party/pixelmplus/PixelMplus10-Regular.ttf`）は実行ファイルに埋め込まず、**exeと同じフォルダに置く通常の.ttfファイル**として配布する（ビルド時にCMakeが自動でコピーする）。実行ファイル自体に大きなバイナリを埋め込むと、Windowsのスマートアプリコントロール等のセキュリティ機能に「不審なパターン」として警戒されやすくなるため、あえて外部ファイルの構成にしている。ライセンス全文は `third_party/pixelmplus/LICENSE_M+FONTS.txt`。 |
 
 Dear ImGui / SFML / raylib も候補でしたが、「依存を増やさずビルドしやすくする」ことを
 優先し、SDL2 (+ 日本語表示のためのSDL2_ttf) + stb + 自前の最小限UI描画という構成に
@@ -78,9 +78,10 @@ Windows用の実行ファイルを自動ビルドします。
 1. GitHubリポジトリの **Actions** タブを開く
 2. 一番上の "Build Windows executable" のワークフロー実行を開く
 3. 画面下部の **Artifacts** に `PixelSpriteEditor-windows-x64` があるのでダウンロード（zip）
-4. 展開すると `PixelSpriteEditor.exe` と、実行に必要な `SDL2.dll` / `SDL2_ttf.dll` などの
-   DLLが入っているので、**すべて同じフォルダに置いたまま** `PixelSpriteEditor.exe` を
-   ダブルクリックして起動（DLLだけを別の場所に移動すると起動できません）
+4. 展開すると `PixelSpriteEditor.exe`、実行に必要な `SDL2.dll` / `SDL2_ttf.dll` などのDLL、
+   UI文字描画用フォント `PixelMplus10-Regular.ttf` が入っているので、**すべて同じフォルダに
+   置いたまま** `PixelSpriteEditor.exe` をダブルクリックして起動（DLLやフォントだけを
+   別の場所に移動すると起動できません）
 
 手動でビルドを走らせたい場合は、Actionsタブの当該ワークフローで **Run workflow** から
 実行できます。
@@ -224,8 +225,7 @@ pixel_art_editer/
 │   ├── Color.h / .cpp     # RGB565量子化ヘルパー
 │   ├── Renderer.h / .cpp  # キャンバスの拡大表示・チェッカー柄・グリッド/ガイド描画
 │   ├── UI.h / .cpp        # メニュー/ツールバー/カラーパネル/ダイアログ/ステータスバー
-│   ├── Font.h / .cpp      # SDL2_ttfベースのUIテキスト描画（埋め込みPixelMplusフォント使用）
-│   ├── PixelMplusFontData.h # PixelMplus10-Regular.ttf を埋め込んだC配列（自動生成）
+│   ├── Font.h / .cpp      # SDL2_ttfベースのUIテキスト描画（exeと同じフォルダの.ttfを読み込む）
 │   ├── I18n.h / .cpp      # 日本語/英語の切り替え（`i18n::T("English", "日本語")`）
 │   ├── Input.h / .cpp     # マウス/キーボード入力→ピクセル座標変換・ショートカット
 │   ├── History.h / .cpp   # Undo/Redo（ストローク単位の差分記録）
@@ -239,7 +239,8 @@ pixel_art_editer/
 │       └── LineUtil.h         # ドラッグ描画の隙間を埋めるBresenham直線補間
 └── third_party/
     ├── stb/               # stb_image.h, stb_image_write.h（PNG I/O）
-    └── pixelmplus/         # PixelMplus10-Regular.ttf 本体 + ライセンス（埋め込み元）
+    └── pixelmplus/         # PixelMplus10-Regular.ttf 本体 + ライセンス
+                            # （CMakeがビルド時に実行ファイルの隣へ自動コピーする）
 ```
 
 ## 設計メモ（将来拡張について）

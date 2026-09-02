@@ -44,3 +44,14 @@ if(MSVC)
 else()
     target_compile_options(PixelSpriteEditor PRIVATE -Wall -Wextra)
 endif()
+
+# The UI font ships as a plain .ttf next to the built binary (Font::Init
+# looks there) rather than being embedded in the executable, so copy it
+# into the build output automatically -- otherwise `cmake --build` would
+# produce a binary that can't find its font until the file is copied by
+# hand.
+add_custom_command(TARGET PixelSpriteEditor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/third_party/pixelmplus/PixelMplus10-Regular.ttf"
+        "$<TARGET_FILE_DIR:PixelSpriteEditor>/PixelMplus10-Regular.ttf"
+)

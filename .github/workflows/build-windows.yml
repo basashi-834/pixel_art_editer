@@ -38,10 +38,11 @@ jobs:
       # than hardcoding that list, resolve whatever the built exe actually
       # links against from MSYS2's /mingw64/bin (Windows system DLLs are
       # untouched since they don't live there).
-      - name: Stage artifact (exe + required DLLs)
+      - name: Stage artifact (exe + font + required DLLs)
         run: |
           mkdir -p dist
           cp build/PixelSpriteEditor.exe dist/
+          cp build/PixelMplus10-Regular.ttf dist/
           ldd build/PixelSpriteEditor.exe | grep -i '/mingw64/bin/' | awk '{print $3}' | sort -u | xargs -I{} cp {} dist/
 
       - uses: actions/upload-artifact@v4

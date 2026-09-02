@@ -7,21 +7,23 @@
 #include "Color.h"
 
 // UI chrome text rendering (menus, toolbar labels, status bar, dialogs).
-// Backed by SDL_ttf and a font embedded directly in the binary (see
-// PixelMplusFontData.h / third_party/pixelmplus) so the app stays a single
-// self-contained executable with no font file to ship or locate at
-// runtime, and so it can render both English and Japanese UI text with one
-// font. PixelMplus is a pixel-styled monospace font, chosen to keep the
-// retro/pixel-art look even though it's rendered as an outline font (only
-// the pixel *canvas* itself has the strict "no antialiasing" requirement --
-// this is UI chrome, not sprite data).
+// Backed by SDL_ttf, loading PixelMplus10-Regular.ttf (see
+// third_party/pixelmplus) from a plain file shipped next to the built
+// executable -- deliberately *not* embedded as a byte array in the binary,
+// since a large opaque blob baked into an .exe is exactly the kind of
+// pattern antivirus/SmartScreen-style heuristics flag as suspicious. It's
+// the one font for both English and Japanese UI text: PixelMplus is a
+// pixel-styled monospace font, chosen to keep the retro/pixel-art look
+// even though it's rendered as an outline font (only the pixel *canvas*
+// itself has the strict "no antialiasing" requirement -- this is UI
+// chrome, not sprite data).
 namespace Font {
 
-// Loads the embedded font at the two point sizes used throughout the UI
-// (scale 1 = small/secondary text, scale >= 2 = normal/primary text).
-// Must be called once after SDL_ttf's dependencies (SDL video) are
-// initialized, before any DrawText/TextWidth call. Returns false on
-// failure (check SDL_GetError()/TTF_GetError()).
+// Loads the font (see Font.cpp's FindFontPath for where it looks) at the
+// two point sizes used throughout the UI (scale 1 = small/secondary text,
+// scale >= 2 = normal/primary text). Must be called once after SDL_ttf's
+// dependencies (SDL video) are initialized, before any DrawText/TextWidth
+// call. Returns false on failure (check stderr for which path it tried).
 bool Init();
 void Shutdown();
 
