@@ -1,265 +1,191 @@
 # Pixel Sprite Editor
 
-90年代の2D対戦格闘ゲーム（ストリートファイターIIなど）風のキャラクタースプライトを
-作るための、C++製の低解像度ピクセルアート専用エディタです。一般的なペイントソフトでは
-なく、「16×16pxのブロックを複数組み合わせて1体のキャラクタースプライトを描く」ことに
-特化しています。
+90年代の対戦格闘ゲーム（ストリートファイターII風）のキャラクタースプライトを
+描くためのシンプルなドット絵エディタです。C# + [Avalonia UI](https://avaloniaui.net/)
+製で、Windows / Linux / macOS で動作します。
 
-![screenshot](docs/screenshot.png)
+> 以前は C++/SDL2 で実装していましたが、ビルドした exe が Windows Smart App
+> Control に不安定にブロックされる問題が解決できなかったため、C# + Avalonia
+> で最初から作り直しました。経緯は [`legacy-cpp-sdl2/NOTE.md`](legacy-cpp-sdl2/NOTE.md)
+> を参照してください。旧実装自体は `legacy-cpp-sdl2/` 以下にそのまま残っています。
 
-## このアプリについて
+---
 
-- キャンバスは**実解像度のピクセルデータ**として保持されます（例: 80×96px）。画面上では
-  1x〜32xまで拡大して編集しますが、内部データは常に元の解像度のままです。
-- 拡大表示は常に **Nearest Neighbor**（最近傍補間）で、アンチエイリアスや画像補間は
-  一切行いません。1クリック = 1ピクセルです。
-- 色は **RGB565（16ビットカラー / 65,536色）** のみを扱います。R:5bit / G:6bit / B:5bit
-  に丸め込まれた色でしか描画できません（0〜255で入力しても自動的に丸められます）。
-- キャンバスは16×16px単位の「ブロック」の集合として扱われ、16px間隔の太いガイド線で
-  ブロック境界を確認しながら描けます。
-- 背景は透明（アルファ0）で管理され、保存したPNGはRGBA8888・実解像度そのままです。
-  グリッドやガイドはあくまで編集画面上の表示であり、PNGには一切書き込まれません。
+## 特長
 
-## 必要な環境
+- **16×16px ブロック単位**でキャラクターを組み立てられるドット絵キャンバス
+- 内部は実解像度のまま保持し、**1x〜32x のニアレストネイバー拡大表示**で編集
+  (1クリック = 1ピクセル)
+- **1px グリッド** と **16×16 ブロックガイド**を個別にON/OFF可能。
+  どちらも保存PNGには一切焼き込まれません
+- 鉛筆・消しゴム・塗りつぶし（4方向）・スポイトの4ツール
+- **RGB565 (16bit, R5G6B5)** カラーモデル。0-255のRGB入力を16bit相当に
+  自動丸め込みし、実際にゲーム機で見える色をそのまま表示
+- 透明背景はチェッカーボード表示、保存PNGでは正しく alpha=0
+- 元の解像度のまま RGBA PNG として保存・読み込み
+- Undo / Redo (Ctrl+Z / Ctrl+Y)
+- ズーム、パン（中ボタンドラッグ / Space+ドラッグ）
+- 日本語 / English 切り替え
+- OSネイティブのファイルダイアログで開く・保存する
 
-- Linux（Ubuntu 24.04 で開発・動作確認）。CMake / SDL2 が動く環境であれば他OSでも
-  基本的にビルド可能です（Windows/macOSは未検証）。
-- CMake 3.16以上
-- C++17 対応コンパイラ（GCC 13 で確認済み）
-- SDL2 開発ライブラリ（`libsdl2-dev`）
-- SDL2_ttf 開発ライブラリ（`libsdl2-ttf-dev`）※UI文字描画（日本語/英語）に使用
+## 動作環境
 
-Ubuntu / Debian系での依存パッケージインストール例:
+実行には **.NET 8 Desktop Runtime** が必要です（.NET 8 SDK でも可）。
+配布物には .exe や DLL 本体は含めていますが、.NET 本体（ランタイム）は
+含まれていません（後述の「フレームワーク依存配布」を参照）。
 
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
-```
+- Windows 10/11 (x64) / Linux / macOS
+- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+  (Windows の場合は "Desktop Runtime 8.0.x - Windows x64" を選択)
 
-## 使用ライブラリと採用理由
+## 使用ライブラリ
 
-| ライブラリ | 用途 | 採用理由 |
-|---|---|---|
-| **SDL2** | ウィンドウ生成・描画・入力 | 依存が軽く、Linux環境に標準的なパッケージ (`libsdl2-dev`) として存在し、`cmake`のconfig-modeにもそのまま対応。Nearest Neighbor拡大（`SDL_HINT_RENDER_SCALE_QUALITY=0` + `SDL_ScaleModeNearest`）や、ピクセル単位のストリーミングテクスチャ更新など、本アプリの要件と相性が良い。 |
-| **stb_image.h / stb_image_write.h**（[nothings/stb](https://github.com/nothings/stb)） | PNG読み込み・書き出し | ヘッダオンリーでビルド設定が不要、依存ライブラリが増えない。RGBA8888のPNGを実解像度のまま読み書きできる。`third_party/stb/` にベンダリング済み（Public Domain / MIT license）。 |
-| **SDL2_ttf** + **PixelMplus10**フォント（[itouhiro/PixelMplus](https://github.com/itouhiro/PixelMplus)、M+ FONT LICENSE） | メニュー・ツールバー・ステータスバー等のUI文字描画（日本語/英語） | 日本語（ひらがな・カタカナ・JIS第1/第2水準漢字）を表示するには、ASCIIのみの自前ビットマップフォントでは不可能なため、SDL2_ttfを導入。フォントはドット絵調のPixelMplus10を採用し、本エディタの見た目に合わせつつ英語・日本語を同じフォント1つで描画できるようにしている。フォント本体（`third_party/pixelmplus/PixelMplus10-Regular.ttf`）は実行ファイルに埋め込まず、**exeと同じフォルダに置く通常の.ttfファイル**として配布する（ビルド時にCMakeが自動でコピーする）。実行ファイル自体に大きなバイナリを埋め込むと、Windowsのスマートアプリコントロール等のセキュリティ機能に「不審なパターン」として警戒されやすくなるため、あえて外部ファイルの構成にしている。ライセンス全文は `third_party/pixelmplus/LICENSE_M+FONTS.txt`。 |
-
-Dear ImGui / SFML / raylib も候補でしたが、「依存を増やさずビルドしやすくする」ことを
-優先し、SDL2 (+ 日本語表示のためのSDL2_ttf) + stb + 自前の最小限UI描画という構成に
-しています。
-
-## ビルド方法
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
-
-実行ファイルは `build/PixelSpriteEditor` に生成されます。
-
-## 起動方法
-
-```bash
-./build/PixelSpriteEditor
-```
-
-起動すると、デフォルトで 5×6ブロック（80×96px）のキャンバスが開きます。
-
-## Windowsで実行する
-
-このリポジトリ自体はLinux上でビルド・動作確認していますが、SDL2はクロスプラットフォーム
-なのでWindows用の`.exe`も作成できます。
-
-### 方法A: GitHub Actionsのビルド成果物をダウンロード（推奨）
-
-`main`や`claude/**`ブランチにpushされるたびに `.github/workflows/build-windows.yml` が
-Windows用の実行ファイルを自動ビルドします。
-
-1. GitHubリポジトリの **Actions** タブを開く
-2. 一番上の "Build Windows executable" のワークフロー実行を開く
-3. 画面下部の **Artifacts** に `PixelSpriteEditor-windows-x64` があるのでダウンロード（zip）
-4. 展開すると `PixelSpriteEditor.exe`、実行に必要な `SDL2.dll` / `SDL2_ttf.dll` などのDLL、
-   UI文字描画用フォント `PixelMplus10-Regular.ttf` が入っているので、**すべて同じフォルダに
-   置いたまま** `PixelSpriteEditor.exe` をダブルクリックして起動（DLLやフォントだけを
-   別の場所に移動すると起動できません）
-
-手動でビルドを走らせたい場合は、Actionsタブの当該ワークフローで **Run workflow** から
-実行できます。
-
-### 方法B: 自分のWindows PCでビルド
-
-```powershell
-# MSYS2 (https://www.msys2.org/) の MINGW64 シェルで実行
-pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_ttf
-cmake -S . -B build -G Ninja
-cmake --build build
-./build/PixelSpriteEditor.exe
-```
-
-## 操作方法
-
-### 画面構成
-
-```
-+--------------------------------------------------+
-| File | Edit | View                               |
-+--------------------------------------------------+
-| Pencil | Eraser | Fill | Picker | Undo | Redo |...|
-| ...Color swatch | Zoom -/+ | Recent colors        |
-+--------------------------------------------------+
-|                                    | Color panel   |
-|            PIXEL CANVAS            | (RGB565)      |
-|      (16x16ガイド / 1pxグリッド)    | R/G/B/Aスライダ|
-|                                    | 最近使った色   |
-|                                    | パレット       |
-+--------------------------------------------------+
-| Image: 80x96  Zoom: 8x  X:24 Y:37  Tool: Pencil   |
-+--------------------------------------------------+
-```
-
-### ツール
-
-- **Pencil**: 左クリック/ドラッグで現在色を1pxずつ描画。ドラッグ中は前回位置との間を
-  線で補間するため、速く動かしても隙間が空きません。
-- **Eraser**: 同様の操作でピクセルを透明（アルファ0）に戻します。
-- **Fill**: クリックした位置と同じ色でつながっている領域を4方向接続で塗りつぶします。
-- **Eyedropper (Picker)**: クリックしたピクセルの色を現在色として取得します。
-
-1回のドラッグ（マウスダウン〜アップ）は1つのUndo単位として扱われます。
-
-### 色
-
-右側のColorパネルで、現在色をRGB565（R:5bit/G:6bit/B:5bit、計65,536色）として編集
-できます。
-
-- スライダーまたは数値ボックス（クリックしてテキスト入力→Enterで確定）で
-  R/G/B/A(0〜255)を指定できます。入力値は自動的にRGB565の階調に丸め込まれ、
-  実際に描画される色としてプレビューされます。
-- 現在色のRGB565パック値（16進数と R5/G6/B5の内訳）を表示します。
-- **Recent** に直近使用した色、**Palette** によく使う色のプリセットを用意しています。
-  クリックで現在色に切り替えられます。
-- Aを0にすると透明色として扱われます。
-
-### 透明背景
-
-キャンバスの透明部分は編集画面上では白/灰色のチェック柄で表示されます
-（`View > Transparency Grid` でON/OFF可能）。実際のPNGにはチェック柄は含まれず、
-アルファ0の透明ピクセルとして保存されます。
-
-### グリッド / ガイド
-
-- **1px Grid**: 1ピクセルごとの境界を細い線で表示（`View > Pixel Grid`、ショートカット `G`）。
-  ズームが小さすぎる（4x未満）ときは自動的に非表示になります。
-- **16x16 Guide**: 16pxごとに太い線を表示し、スプライトのブロック境界を確認できます
-  （`View > 16x16 Guide`、ショートカット `Shift+G`）。
-- どちらもPNG保存時には一切含まれません（保存は常にキャンバスの生ピクセルデータのみ）。
-
-### ズーム / キャンバス移動
-
-- ツールバーの `-` / `+` ボタン、またはマウスホイールでズームできます
-  （1x, 2x, 4x, 8x, 16x, 24x, 32x）。常にNearest Neighborで拡大され、ぼかしは
-  発生しません。
-- **中ボタンドラッグ** または **Spaceキーを押しながら左ドラッグ** でキャンバスを
-  スクロールできます。
-
-### 新規作成 (New Canvas)
-
-`File > New` (`Ctrl+N`) で以下のいずれかの方法でキャンバスサイズを指定できます。
-
-- **Pixel Size**: Width / Height をピクセル単位で直接指定（例: 80 × 96）
-- **Tile Size**: 16×16ブロック単位で横・縦のブロック数を指定（例: 横5×縦6 → 80×96px）
-
-### PNG保存 / 読み込み
-
-- `File > Save` (`Ctrl+S`) / `Save As` (`Ctrl+Shift+S`) で、キャンバスと同じ実解像度の
-  RGBA PNGとして保存します。画面上のズーム倍率に関係なく、常に元の解像度のまま
-  保存されます（グリッド・ガイドは含まれません）。
-- `File > Open` (`Ctrl+O`) で、カレントディレクトリにある `.png` ファイル一覧から選ぶか、
-  パスを直接入力して読み込めます。画像サイズは変更されず、そのままキャンバスの
-  解像度になります。
-
-### Undo / Redo
-
-`Ctrl+Z` (Undo) / `Ctrl+Y` (Redo) に対応しています。Pencil・Eraser・Fillの操作を
-取り消し・やり直しできます。
-
-### 言語切り替え（日本語 / English）
-
-`View` メニュー最下部の「言語: English」/「Language: 日本語」をクリックするか、
-ショートカット `L` で日本語UIと英語UIを切り替えられます。メニュー・ツールバー・
-ダイアログ・ステータスバーなど全てのUI文字列が対象です（デフォルトは日本語）。
-
-## ショートカットキー
-
-| キー | 動作 |
+| ライブラリ | 用途 |
 |---|---|
-| `B` | Pencilツール |
-| `E` | Eraserツール |
-| `F` | Fillツール |
-| `I` | Eyedropperツール |
-| `Ctrl+N` | New Canvas |
-| `Ctrl+O` | Open |
-| `Ctrl+S` | Save |
-| `Ctrl+Shift+S` | Save As |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `G` | 1px Grid ON/OFF |
-| `Shift+G` | 16x16 Guide ON/OFF |
-| `L` | 言語切り替え（日本語 / English） |
-| マウスホイール | ズームイン/アウト |
-| 中ボタンドラッグ / `Space`+左ドラッグ | キャンバス移動 |
-| `Esc` | 開いているダイアログを閉じる |
+| [Avalonia UI](https://avaloniaui.net/) 11.1 | クロスプラットフォームGUI（ウィンドウ・メニュー・OSネイティブファイルダイアログ） |
+| [SixLabors.ImageSharp](https://sixlabors.com/products/imagesharp/) 3.1 | PNGの読み込み・書き出し（正確なピクセル単位の入出力のため） |
+
+Avalonia自体が持つ`Bitmap`/`WriteableBitmap`は書き込み用途に最適化されており、
+読み込んだPNGから生ピクセルを確実に取り出す標準APIがないため、PNGの
+読み書きだけはImageSharpに任せています（画面表示用のプレビュー生成は
+Avaloniaの`WriteableBitmap`を使用）。
+
+### なぜC++/SDL2からC#/Avaloniaに変えたのか
+
+旧C++版は単一の未署名exeをビルドしていましたが、Windows Smart App Control に
+再現性なくブロックされ続け、コード署名や配布経路を変えても解決しませんでした。
+C#への移行で「フレームワーク依存配布」（後述）を選んだのは、実際に起動する
+プロセスをMicrosoft自身が署名した`dotnet.exe`にすることで、この種の
+未知バイナリ判定を根本的に回避するためです。副次効果として、Avaloniaの
+OSネイティブファイルダイアログにより、旧版で何度も手直しが必要だった
+「開く/保存」のパス指定UIを自作する必要もなくなりました。
+
+## ビルド方法（ソースから）
+
+```bash
+cd src
+dotnet build
+```
+
+## 実行方法
+
+### ソースから直接実行
+
+```bash
+cd src
+dotnet run
+```
+
+### 配布されたZIPから実行（Windows）
+
+1. ZIPを展開する
+2. `.NET 8 Desktop Runtime` が入っていなければ先にインストールする
+   （[ダウンロードページ](https://dotnet.microsoft.com/download/dotnet/8.0)）
+3. `run.bat` をダブルクリックする
+
+`run.bat` は展開先フォルダで `dotnet PixelSpriteEditor.dll` を実行するだけの
+シンプルなバッチファイルです。ネイティブexeを自前ビルドしないことで、
+署名なしバイナリとして警告・ブロックされる問題を避けています
+（＝**フレームワーク依存配布**）。
+
+### 自分で配布物を作る
+
+```bash
+cd src
+dotnet publish -c Release -r win-x64 --self-contained false -p:UseAppHost=false -o ../dist
+cp ../dist-template/run.bat ../dist/
+```
+
+`../dist/` に `run.bat` と一緒にZIPで固めれば配布できます。
+
+## 使い方
+
+| 操作 | 内容 |
+|---|---|
+| 左クリック（鉛筆/消しゴム） | ドラッグで連続描画（間の座標も自動補間） |
+| 左クリック（塗りつぶし） | クリックした位置と同じ色の4方向連結領域を塗る |
+| 左クリック（スポイト） | クリックした位置の色を現在色にする |
+| マウスホイール | ズームイン・アウト（カーソル位置を中心に） |
+| 中ボタンドラッグ / Space+ドラッグ | キャンバスをパン（平行移動） |
+
+### 新規キャンバス
+
+`File > New` から、**ピクセルサイズ指定**と**タイル数指定**
+（16×16ブロック単位、格ゲーのスプライトらしく組み立てやすい）の
+どちらでも新規キャンバスを作成できます。
+
+### カラー
+
+右パネルのR/G/B/Aスライダーは0-255の見た目上の値ですが、内部的には
+RGB565（R5G6B5）に丸め込まれます。`RGB565: 0xXXXX` の表示で、実際に
+16bitカラーとして保持される値を常に確認できます。Aのみ8bitのまま
+（16bitカラーフォーマットにアルファは無いため）。
+
+### PNGの保存について
+
+保存されるPNGは、キャンバスの実解像度（表示ズーム倍率とは無関係）で、
+グリッドやチェッカーボードなどの編集用UIは一切含まれません。透明ピクセルは
+`alpha = 0` としてそのまま保存されます。
+
+## キーボードショートカット
+
+| 操作 | ショートカット |
+|---|---|
+| 新規キャンバス | Ctrl+N |
+| 開く | Ctrl+O |
+| 保存 | Ctrl+S |
+| 名前を付けて保存 | Ctrl+Shift+S |
+| 元に戻す | Ctrl+Z |
+| やり直し | Ctrl+Y |
+| ズームイン | Ctrl++ |
+| ズームアウト | Ctrl+- |
+| パン（一時的） | Space を押しながらドラッグ |
 
 ## ファイル構成
 
 ```
-pixel_art_editer/
-├── CMakeLists.txt
-├── README.md
-├── .github/workflows/
-│   └── build-windows.yml # push時にWindows用exeを自動ビルド（MSYS2 + SDL2/SDL2_ttf）
-├── src/
-│   ├── main.cpp          # エントリポイント（+ ヘッドレスセルフテストモード）
-│   ├── App.h / .cpp       # アプリ全体の状態（キャンバス/ツール/色/表示設定/ダイアログ）とメインループ
-│   ├── Canvas.h / .cpp    # 実解像度のピクセルデータ（RGBAバッファ）
-│   ├── Color.h / .cpp     # RGB565量子化ヘルパー
-│   ├── Renderer.h / .cpp  # キャンバスの拡大表示・チェッカー柄・グリッド/ガイド描画
-│   ├── UI.h / .cpp        # メニュー/ツールバー/カラーパネル/ダイアログ/ステータスバー
-│   ├── Font.h / .cpp      # SDL2_ttfベースのUIテキスト描画（exeと同じフォルダの.ttfを読み込む）
-│   ├── I18n.h / .cpp      # 日本語/英語の切り替え（`i18n::T("English", "日本語")`）
-│   ├── Input.h / .cpp     # マウス/キーボード入力→ピクセル座標変換・ショートカット
-│   ├── History.h / .cpp   # Undo/Redo（ストローク単位の差分記録）
-│   ├── ImageIO.h / .cpp   # PNG読み込み・書き出し（stb_image使用）
-│   └── Tools/
-│       ├── Tool.h             # ツール共通インターフェース
-│       ├── PencilTool.h/.cpp
-│       ├── EraserTool.h/.cpp
-│       ├── FillTool.h/.cpp
-│       ├── EyedropperTool.h/.cpp
-│       └── LineUtil.h         # ドラッグ描画の隙間を埋めるBresenham直線補間
-└── third_party/
-    ├── stb/               # stb_image.h, stb_image_write.h（PNG I/O）
-    └── pixelmplus/         # PixelMplus10-Regular.ttf 本体 + ライセンス
-                            # （CMakeがビルド時に実行ファイルの隣へ自動コピーする）
+src/
+  Program.cs              エントリポイント（通常起動 / --headless-verify / --selftest）
+  SelfTest.cs              ロジック層の自己テスト（モデル/ツール/PNG入出力）
+  App.axaml(.cs)           Avaloniaアプリケーションのブートストラップ
+  Models/
+    PixelColor.cs           RGBA8888のピクセル値 + RGB565量子化
+    PixelCanvas.cs           実解像度のピクセルバッファ
+    History.cs               ストローク単位のUndo/Redo
+    EditorState.cs            アプリの中心状態（キャンバス・ツール・カメラ・色）
+  Tools/
+    IEditorContext.cs / ITool.cs   ツールが必要とする最小インターフェース
+    PencilTool.cs / EraserTool.cs / FillTool.cs / EyedropperTool.cs
+    LineUtil.cs               ブレゼンハムの線分補間（ドラッグの間引き防止）
+  Services/
+    Loc.cs                    日本語/英語の切り替え
+    ImageIO.cs                 PNGの読み書き（ImageSharp）+ 表示用ビットマップ生成
+  Views/
+    MainWindow.axaml(.cs)     メニュー・ツールバー・カラーパネル・ステータスバー
+    PixelCanvasView.cs         キャンバス描画（ニアレストネイバー拡大・グリッド）とポインタ操作
+    NewCanvasDialog.axaml(.cs) 新規キャンバスダイアログ
+
+dist-template/
+  run.bat                   配布用の起動バッチ（フレームワーク依存配布）
+
+legacy-cpp-sdl2/            旧C++/SDL2実装（参考用、メンテナンス対象外）
 ```
 
-## 設計メモ（将来拡張について）
+新しいツールを追加する場合は `ITool` を実装して `EditorState` の
+`_tools` 辞書に登録するだけで済むように設計しています。アニメーション
+フレーム、スプライトシート書き出し、左右反転、選択範囲、コピー＆ペースト、
+レイヤー、パレット/プロジェクト保存、オニオンスキンなどは現時点では
+未実装ですが、`EditorState`/`PixelCanvas` の単純な構造の上に無理なく
+拡張できるはずです。
 
-現時点ではアニメーションフレーム管理・スプライトシート出力・左右反転・選択範囲・
-コピー＆ペースト・レイヤー・パレット保存・プロジェクト保存・オニオンスキンなどは
-未実装ですが、以下の分離を意識しているため、将来的に追加しやすい設計にしています。
+## 動作確認について
 
-- `Canvas` は「1枚の実ピクセルデータ」だけを持つ純粋なデータクラスです。将来
-  複数の `Canvas`（フレームやレイヤー）を並べて管理する形に拡張しやすくなっています。
-- 描画ツールは `Tool` インターフェースの実装として分離されているため、新しいツール
-  （選択範囲、コピー＆ペーストなど）を既存コードに手を入れずに追加できます。
-- `History` はピクセル単位の差分（ストローク）を記録する設計のため、将来レイヤーや
-  フレームをまたぐ操作にも応用しやすくなっています。
-- 保存/読み込みは `ImageIO` に閉じているため、スプライトシート書き出しなどの
-  フォーマット追加もこのモジュールを拡張するだけで対応できます。
+このサンドボックス環境にはディスプレイが無いため、実際の目視確認は
+Avalonia.Headlessによるオフスクリーンレンダリングで行っています。
 
-## 既知の制限
-
-- ファイルを開く/保存するダイアログは簡易的な自前実装で、OSネイティブのファイル
-  選択ダイアログではありません（カレントディレクトリの `.png` 一覧 + パス直接入力）。
-- レイヤー、アニメーションフレーム、選択範囲、コピー＆ペーストは未実装です。
+```bash
+cd src
+dotnet run -- --selftest              # モデル/ツール/PNG入出力のロジックテスト
+dotnet run -- --headless-verify <dir> # 実際のポインタ操作・Ctrl+Zショートカット・
+                                       # 言語切り替えをUI越しに再現し、各段階のPNGを書き出す
+```

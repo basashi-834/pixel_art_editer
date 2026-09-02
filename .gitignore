@@ -4,3 +4,9 @@ build-win/
 *.obj
 .cache/
 compile_commands.json
+
+# C# / Avalonia (src/)
+src/bin/
+src/obj/
+*.user
+dist/

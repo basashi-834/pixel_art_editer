@@ -1,8 +1,10 @@
-name: Build Windows executable
+name: Build Windows package
 
-# Builds a native Windows .exe on every push and lets it be downloaded from
-# the run's "Artifacts" section (Actions tab), without requiring a GitHub
-# Release. Trigger manually from the Actions tab with "Run workflow" too.
+# Publishes a framework-dependent win-x64 build (requires the .NET 8 Desktop
+# Runtime on the user's machine, deliberately no self-contained native .exe
+# -- see legacy-cpp-sdl2/NOTE.md for why) on every push, downloadable from
+# the run's "Artifacts" section (Actions tab). Trigger manually too via
+# "Run workflow".
 on:
   push:
     branches: ["**"]
@@ -10,40 +12,28 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: msys2/setup-msys2@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_ttf
+          dotnet-version: "8.0.x"
 
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Self-test (model/tools/PNG I/O logic)
+        run: dotnet run --project src -- --selftest
 
-      - name: Build
-        run: cmake --build build
+      - name: Publish (framework-dependent, win-x64)
+        run: >
+          dotnet publish src/PixelSpriteEditor.csproj
+          -c Release -r win-x64 --self-contained false
+          -p:UseAppHost=false
+          -o dist
 
-      # SDL2_ttf pulls in freetype/harfbuzz/etc as separate DLLs, so rather
-      # than hardcoding that list, resolve whatever the built exe actually
-      # links against from MSYS2's /mingw64/bin (Windows system DLLs are
-      # untouched since they don't live there).
-      - name: Stage artifact (exe + font + required DLLs)
+      - name: Add run.bat + README
         run: |
-          mkdir -p dist
-          cp build/PixelSpriteEditor.exe dist/
-          cp build/PixelMplus10-Regular.ttf dist/
-          ldd build/PixelSpriteEditor.exe | grep -i '/mingw64/bin/' | awk '{print $3}' | sort -u | xargs -I{} cp {} dist/
+          cp dist-template/run.bat dist/
+          cp README.md dist/
 
       - uses: actions/upload-artifact@v4
         with:

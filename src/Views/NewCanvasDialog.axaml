@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PixelSpriteEditor.Views.NewCanvasDialog"
+        Width="360" Height="260"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Title="New Canvas">
+  <StackPanel Margin="16" Spacing="10">
+    <TextBlock Name="TitleText" FontWeight="Bold" FontSize="15"/>
+
+    <RadioButton Name="ModePixelsRadio" GroupName="SizeMode" IsChecked="True"/>
+    <RadioButton Name="ModeTilesRadio" GroupName="SizeMode"/>
+
+    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="20,4,0,0">
+      <TextBlock Grid.Row="0" Grid.Column="0" Name="WidthLabel" VerticalAlignment="Center" Margin="0,0,8,6"/>
+      <NumericUpDown Grid.Row="0" Grid.Column="1" Name="WidthInput" Minimum="1" Maximum="1024" Value="64" Margin="0,0,0,6"/>
+      <TextBlock Grid.Row="1" Grid.Column="0" Name="HeightLabel" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <NumericUpDown Grid.Row="1" Grid.Column="1" Name="HeightInput" Minimum="1" Maximum="1024" Value="64"/>
+    </Grid>
+
+    <TextBlock Name="PreviewText" Opacity="0.75"/>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,16,0,0">
+      <Button Name="CancelBtn" Content="Cancel"/>
+      <Button Name="OkBtn" Content="OK" IsDefault="True"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

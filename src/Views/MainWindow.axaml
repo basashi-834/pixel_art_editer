@@ -1,0 +1,92 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:PixelSpriteEditor.Views"
+        x:Class="PixelSpriteEditor.Views.MainWindow"
+        Title="Pixel Sprite Editor"
+        Width="1150" Height="740"
+        MinWidth="820" MinHeight="560">
+  <DockPanel LastChildFill="True">
+
+    <Menu DockPanel.Dock="Top" Name="MainMenu">
+      <MenuItem Name="MenuFile">
+        <MenuItem Name="MenuNew" HotKey="Ctrl+N"/>
+        <MenuItem Name="MenuOpen" HotKey="Ctrl+O"/>
+        <MenuItem Name="MenuSave" HotKey="Ctrl+S"/>
+        <MenuItem Name="MenuSaveAs" HotKey="Ctrl+Shift+S"/>
+        <Separator/>
+        <MenuItem Name="MenuExit"/>
+      </MenuItem>
+      <MenuItem Name="MenuEdit">
+        <MenuItem Name="MenuUndo" HotKey="Ctrl+Z"/>
+        <MenuItem Name="MenuRedo" HotKey="Ctrl+Y"/>
+      </MenuItem>
+      <MenuItem Name="MenuView">
+        <MenuItem Name="MenuTogglePixelGrid"/>
+        <MenuItem Name="MenuToggle16Guide"/>
+        <MenuItem Name="MenuToggleChecker"/>
+        <Separator/>
+        <MenuItem Name="MenuZoomIn"/>
+        <MenuItem Name="MenuZoomOut"/>
+      </MenuItem>
+      <MenuItem Name="MenuLang"/>
+    </Menu>
+
+    <Border DockPanel.Dock="Top" Padding="8,6" BorderThickness="0,0,0,1" BorderBrush="#3a3a3a">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <ToggleButton Name="ToolPencilBtn"/>
+        <ToggleButton Name="ToolEraserBtn"/>
+        <ToggleButton Name="ToolFillBtn"/>
+        <ToggleButton Name="ToolEyedropperBtn"/>
+        <Rectangle Width="1" Fill="#3a3a3a" Margin="6,0"/>
+        <Button Name="UndoBtn"/>
+        <Button Name="RedoBtn"/>
+        <Rectangle Width="1" Fill="#3a3a3a" Margin="6,0"/>
+        <Button Name="ZoomOutBtn" Content="-" Width="28"/>
+        <TextBlock Name="ZoomLabel" Text="800%" VerticalAlignment="Center" Width="55" TextAlignment="Center"/>
+        <Button Name="ZoomInBtn" Content="+" Width="28"/>
+      </StackPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0" BorderBrush="#3a3a3a">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Name="StatusLeft" Text=""/>
+        <TextBlock Grid.Column="1" Name="StatusRight" Text=""/>
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Left" Width="240" Padding="10" BorderThickness="0,0,1,0" BorderBrush="#3a3a3a">
+      <StackPanel Spacing="8">
+        <TextBlock Name="ColorPanelTitle" FontWeight="Bold"/>
+        <Border Height="48" BorderThickness="1" BorderBrush="#555" Background="#2b2b2b">
+          <Border Name="ColorSwatch"/>
+        </Border>
+        <TextBlock Name="Rgb565Label" FontFamily="Consolas,monospace"/>
+
+        <Grid ColumnDefinitions="20,*,44" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="R" VerticalAlignment="Center"/>
+          <Slider Grid.Row="0" Grid.Column="1" Name="SliderR" Minimum="0" Maximum="255" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="0" Grid.Column="2" Name="ValR" Text="0" VerticalAlignment="Center" TextAlignment="Right"/>
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="G" VerticalAlignment="Center"/>
+          <Slider Grid.Row="1" Grid.Column="1" Name="SliderG" Minimum="0" Maximum="255" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="1" Grid.Column="2" Name="ValG" Text="0" VerticalAlignment="Center" TextAlignment="Right"/>
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="B" VerticalAlignment="Center"/>
+          <Slider Grid.Row="2" Grid.Column="1" Name="SliderB" Minimum="0" Maximum="255" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="2" Grid.Column="2" Name="ValB" Text="0" VerticalAlignment="Center" TextAlignment="Right"/>
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="A" VerticalAlignment="Center"/>
+          <Slider Grid.Row="3" Grid.Column="1" Name="SliderA" Minimum="0" Maximum="255" VerticalAlignment="Center"/>
+          <TextBlock Grid.Row="3" Grid.Column="2" Name="ValA" Text="255" VerticalAlignment="Center" TextAlignment="Right"/>
+        </Grid>
+
+        <TextBlock Name="RecentLabel" FontWeight="Bold" Margin="0,8,0,0"/>
+        <WrapPanel Name="RecentPanel" Orientation="Horizontal"/>
+      </StackPanel>
+    </Border>
+
+    <Border Background="#202020">
+      <views:PixelCanvasView Name="CanvasView"/>
+    </Border>
+  </DockPanel>
+</Window>
