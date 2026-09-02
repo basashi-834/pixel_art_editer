@@ -5,8 +5,11 @@ build-win/
 .cache/
 compile_commands.json
 
-# C# / Avalonia (src/)
-src/bin/
-src/obj/
+# C# / Avalonia (legacy)
+legacy-csharp-avalonia/src/bin/
+legacy-csharp-avalonia/src/obj/
 *.user
 dist/
+
+# Java (PixelSpriteEditor/) -- compiled locally by the user via javac
+PixelSpriteEditor/src/*.class

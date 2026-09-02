@@ -1,0 +1,31 @@
+name: Java compile check
+
+# The current implementation (PixelSpriteEditor/) is deliberately distributed
+# as plain .java source that the user compiles themselves with javac -- see
+# the root README.md and PixelSpriteEditor/README.md for why. There is
+# nothing to build a downloadable artifact from. This workflow just verifies
+# that the source still compiles cleanly and the pure-logic self-test still
+# passes, the same way a contributor would check it locally.
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch: {}
+
+jobs:
+  compile-and-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Compile
+        working-directory: PixelSpriteEditor/src
+        run: javac -encoding UTF-8 *.java
+
+      - name: Self-test (model/tools/PNG I/O logic, no display needed)
+        working-directory: PixelSpriteEditor/src
+        run: java SelfTest
