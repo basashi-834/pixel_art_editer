@@ -35,6 +35,8 @@ public sealed class PixelCanvasView : Control
     private Point _panLastPos;
     private bool _painting;
     private bool _spaceHeld;
+    private int _hoverX, _hoverY;
+    private bool _hoverVisible;
 
     private static readonly IBrush CheckerBrush = CreateCheckerBrush();
 
@@ -132,6 +134,21 @@ public sealed class PixelCanvasView : Control
             var pen = new Pen(new SolidColorBrush(Color.FromArgb(210, 255, 70, 70)), 1);
             DrawGrid(context, e, pen, 16);
         }
+
+        if (_hoverVisible)
+        {
+            double x0 = e.CamOffsetX + _hoverX * e.Zoom;
+            double y0 = e.CamOffsetY + _hoverY * e.Zoom;
+            double size = e.Zoom;
+            // Black-then-white double outline so the cursor pixel stays visible against any color underneath.
+            var outer = new Rect(x0 + 0.5, y0 + 0.5, Math.Max(0, size - 1), Math.Max(0, size - 1));
+            context.DrawRectangle(null, new Pen(Brushes.Black, 1), outer);
+            if (size >= 6)
+            {
+                var inner = new Rect(x0 + 1.5, y0 + 1.5, Math.Max(0, size - 3), Math.Max(0, size - 3));
+                context.DrawRectangle(null, new Pen(Brushes.White, 1), inner);
+            }
+        }
     }
 
     private static void DrawGrid(DrawingContext context, EditorState e, Pen pen, int step)
@@ -205,11 +222,30 @@ public sealed class PixelCanvasView : Control
         }
 
         var (px, py) = ToPixel(pos);
-        PixelHovered?.Invoke(px, py, editor.Canvas.InBounds(px, py));
+        bool inBounds = editor.Canvas.InBounds(px, py);
+        PixelHovered?.Invoke(px, py, inBounds);
+
+        if (_hoverX != px || _hoverY != py || _hoverVisible != inBounds)
+        {
+            _hoverX = px;
+            _hoverY = py;
+            _hoverVisible = inBounds;
+            InvalidateVisual();
+        }
 
         if (_painting)
         {
             editor.CurrentTool.OnPointerMove(editor, px, py);
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        if (_hoverVisible)
+        {
+            _hoverVisible = false;
             InvalidateVisual();
         }
     }
