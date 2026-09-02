@@ -63,6 +63,35 @@ cmake --build build
 
 起動すると、デフォルトで 5×6ブロック（80×96px）のキャンバスが開きます。
 
+## Windowsで実行する
+
+このリポジトリ自体はLinux上でビルド・動作確認していますが、SDL2はクロスプラットフォーム
+なのでWindows用の`.exe`も作成できます。
+
+### 方法A: GitHub Actionsのビルド成果物をダウンロード（推奨）
+
+`main`や`claude/**`ブランチにpushされるたびに `.github/workflows/build-windows.yml` が
+Windows用の実行ファイルを自動ビルドします。
+
+1. GitHubリポジトリの **Actions** タブを開く
+2. 一番上の "Build Windows executable" のワークフロー実行を開く
+3. 画面下部の **Artifacts** に `PixelSpriteEditor-windows-x64` があるのでダウンロード（zip）
+4. 展開すると `PixelSpriteEditor.exe` と `SDL2.dll` が入っているので、同じフォルダに
+   置いたまま `PixelSpriteEditor.exe` をダブルクリックして起動
+
+手動でビルドを走らせたい場合は、Actionsタブの当該ワークフローで **Run workflow** から
+実行できます。
+
+### 方法B: 自分のWindows PCでビルド
+
+```powershell
+# MSYS2 (https://www.msys2.org/) の MINGW64 シェルで実行
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2
+cmake -S . -B build -G Ninja
+cmake --build build
+./build/PixelSpriteEditor.exe
+```
+
 ## 操作方法
 
 ### 画面構成

@@ -1,0 +1,45 @@
+name: Build Windows executable
+
+# Builds a native Windows .exe on every push and lets it be downloaded from
+# the run's "Artifacts" section (Actions tab), without requiring a GitHub
+# Release. Trigger manually from the Actions tab with "Run workflow" too.
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch: {}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Stage artifact (exe + required SDL2.dll)
+        run: |
+          mkdir -p dist
+          cp build/PixelSpriteEditor.exe dist/
+          cp /mingw64/bin/SDL2.dll dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PixelSpriteEditor-windows-x64
+          path: dist/
