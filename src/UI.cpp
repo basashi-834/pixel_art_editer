@@ -69,6 +69,7 @@ struct Layout {
     bool hasPathField = false;
     FieldId field1Id = FieldId::None;
     FieldId field2Id = FieldId::None;
+    int folderLabelY = 0;  // Open/SaveAs only: where the "current folder" line goes
 
     std::vector<std::string> openFiles;
 };
@@ -128,6 +129,24 @@ std::vector<std::string> WrapToWidth(const std::string& text, int maxWidth, int 
     if (!current.empty()) lines.push_back(current);
     if (lines.empty()) lines.push_back("");
     return lines;
+}
+
+// For a single-line path/folder display: if `text` is wider than
+// `maxWidth`, drops characters from the *front* (prefixed with "...") since
+// the tail of a path -- the file/folder actually being referred to -- is
+// usually more useful to see than its drive/root prefix.
+std::string TruncateFront(const std::string& text, int maxWidth, int scale) {
+    if (maxWidth <= 0) return "";
+    if (Font::TextWidth(text, scale) <= maxWidth) return text;
+    const std::string ellipsis = "...";
+    if (Font::TextWidth(ellipsis, scale) >= maxWidth) return ellipsis;
+    size_t cut = 0;
+    while (cut < text.size()) {
+        std::string candidate = ellipsis + text.substr(cut);
+        if (Font::TextWidth(candidate, scale) <= maxWidth) break;
+        ++cut;
+    }
+    return ellipsis + text.substr(cut);
 }
 
 void DrawCenteredText(SDL_Renderer* r, const SDL_Rect& rect, const std::string& text, Color c, int scale = 2) {
@@ -503,14 +522,15 @@ Layout BuildLayout(App& app) {
             L.buttons.push_back(ButtonItem{ok, "dialog:OK", createLabel, false, true});
             L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         } else if (app.dialogMode == DialogMode::Open) {
-            SDL_Rect box{W / 2 - 220, H / 2 - 190, 440, 380};
+            SDL_Rect box{W / 2 - 220, H / 2 - 205, 440, 410};
             L.dialogBox = box;
 
+            L.folderLabelY = box.y + 38;
             L.hasPathField = true;
-            L.dlgPathField = SDL_Rect{box.x + 90, box.y + 40, 330, 26};
+            L.dlgPathField = SDL_Rect{box.x + 90, box.y + 68, 330, 26};
 
-            L.openFiles = app.ListPngFilesInCwd();
-            int ly = box.y + 80;
+            L.openFiles = app.ListPngFilesInBaseDir();
+            int ly = box.y + 108;
             for (size_t i = 0; i < L.openFiles.size() && i < 10; ++i) {
                 SDL_Rect r{box.x + 20, ly, 400, 22};
                 L.buttons.push_back(ButtonItem{r, "openfile:" + std::to_string(i), L.openFiles[i], false, true});
@@ -523,16 +543,17 @@ Layout BuildLayout(App& app) {
             int cancelW = Font::TextWidth(cancelLabel) + 32;
             int pairW = okW + 20 + cancelW;
             int pairX = box.x + (box.w - pairW) / 2;
-            SDL_Rect ok{pairX, box.y + 340 - 10, okW, 32};
-            SDL_Rect cancel{pairX + okW + 20, box.y + 340 - 10, cancelW, 32};
+            SDL_Rect ok{pairX, box.y + 370 - 10, okW, 32};
+            SDL_Rect cancel{pairX + okW + 20, box.y + 370 - 10, cancelW, 32};
             L.buttons.push_back(ButtonItem{ok, "dialog:OK", openLabel, false, true});
             L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         } else if (app.dialogMode == DialogMode::SaveAs) {
-            SDL_Rect box{W / 2 - 220, H / 2 - 80, 440, 160};
+            SDL_Rect box{W / 2 - 220, H / 2 - 95, 440, 190};
             L.dialogBox = box;
 
+            L.folderLabelY = box.y + 38;
             L.hasPathField = true;
-            L.dlgPathField = SDL_Rect{box.x + 100, box.y + 50, 320, 26};
+            L.dlgPathField = SDL_Rect{box.x + 100, box.y + 68, 320, 26};
 
             std::string saveLabel = i18n::T("Save", "保存");
             std::string cancelLabel = i18n::T("Cancel", "キャンセル");
@@ -540,8 +561,8 @@ Layout BuildLayout(App& app) {
             int cancelW = Font::TextWidth(cancelLabel) + 32;
             int pairW = okW + 20 + cancelW;
             int pairX = box.x + (box.w - pairW) / 2;
-            SDL_Rect ok{pairX, box.y + 100, okW, 32};
-            SDL_Rect cancel{pairX + okW + 20, box.y + 100, cancelW, 32};
+            SDL_Rect ok{pairX, box.y + 130, okW, 32};
+            SDL_Rect cancel{pairX + okW + 20, box.y + 130, cancelW, 32};
             L.buttons.push_back(ButtonItem{ok, "dialog:OK", saveLabel, false, true});
             L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         }
@@ -607,7 +628,7 @@ void HandleButtonClick(App& app, const std::string& id) {
 
     if (id.rfind("openfile:", 0) == 0) {
         size_t idx = std::stoul(id.substr(9));
-        auto files = app.ListPngFilesInCwd();
+        auto files = app.ListPngFilesInBaseDir();
         if (idx < files.size()) {
             app.LoadFromPath(files[idx]);
             app.CloseDialog();
@@ -747,6 +768,13 @@ void DrawChrome(App& app) {
 
         std::string msg = app.GetStatusMessage();
         if (!msg.empty()) {
+            // Right-aligned; truncated (keeping the tail -- e.g. the
+            // filename -- which matters more than a long absolute path's
+            // root) so a long saved/loaded path can never overlap the
+            // left-aligned info that's always shown here.
+            int leftW = Font::TextWidth(buf, 2);
+            int maxMsgWidth = app.windowWidth_ - 12 - (8 + leftW + 24);
+            msg = TruncateFront(msg, std::max(maxMsgWidth, 0), 2);
             int mw = Font::TextWidth(msg);
             Font::DrawText(r, app.windowWidth_ - mw - 12, y + 4, msg, Color{130, 220, 130, 255}, 2);
         }
@@ -808,6 +836,14 @@ void DrawChrome(App& app) {
                 Font::DrawText(r, L.dlgField1.x, L.dlgField2.y + 40, buf, kTextDim, 2);
             }
         } else if (app.dialogMode == DialogMode::Open || app.dialogMode == DialogMode::SaveAs) {
+            // Always show what relative filenames/the file list resolve
+            // against -- otherwise there's no way to tell where "just type
+            // a filename" actually points.
+            std::string folderPrefix = i18n::T("Folder: ", "フォルダ: ");
+            int folderMaxWidth = L.dialogBox.w - 40 - Font::TextWidth(folderPrefix, 1);
+            std::string folderPath = TruncateFront(app.GetAppBaseDir(), folderMaxWidth, 1);
+            Font::DrawText(r, L.dialogBox.x + 20, L.folderLabelY, folderPrefix + folderPath, kTextDim, 1);
+
             std::string lbl = app.dialogMode == DialogMode::Open ? i18n::T("Path:", "パス:")
                                                                   : i18n::T("Filename:", "ファイル名:");
             Font::DrawText(r, L.dlgPathField.x - Font::TextWidth(lbl) - 10, L.dlgPathField.y + 4, lbl, kText, 2);

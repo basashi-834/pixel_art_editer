@@ -41,6 +41,17 @@ bool App::Init() {
     }
     sdlInitialized_ = true;
 
+    // Anchor relative Open/Save paths to the executable's own folder
+    // (not the OS's ambient "current directory", which silently depends on
+    // how the exe was launched -- double-click, shortcut, terminal -- and
+    // gives the user no visible answer to "where am I relative to?").
+    if (char* base = SDL_GetBasePath()) {
+        appBaseDir_ = base;
+        SDL_free(base);
+    } else {
+        appBaseDir_ = "./";
+    }
+
     // Nearest-neighbor everywhere, always -- this is a pixel art tool, not
     // a general image viewer, so blurring/interpolation is never wanted.
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
@@ -248,11 +259,11 @@ void App::ConfirmDialog() {
     activeField = FieldId::None;
 }
 
-std::vector<std::string> App::ListPngFilesInCwd() const {
+std::vector<std::string> App::ListPngFilesInBaseDir() const {
     std::vector<std::string> result;
     namespace fs = std::filesystem;
     std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(fs::current_path(), ec)) {
+    for (const auto& entry : fs::directory_iterator(appBaseDir_, ec)) {
         if (ec) break;
         if (entry.is_regular_file() && entry.path().extension() == ".png") {
             result.push_back(entry.path().filename().string());
@@ -260,6 +271,23 @@ std::vector<std::string> App::ListPngFilesInCwd() const {
     }
     std::sort(result.begin(), result.end());
     return result;
+}
+
+std::string App::ResolvePath(const std::string& input) const {
+    std::string s = input;
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+    // Windows Explorer's "Copy as path" wraps the path in double quotes;
+    // pasting that in (Ctrl+V) would otherwise look for a file literally
+    // named with quote characters in it.
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
+        s = s.substr(1, s.size() - 2);
+    }
+
+    namespace fs = std::filesystem;
+    fs::path p(s);
+    if (p.is_absolute()) return s;
+    return (fs::path(appBaseDir_) / p).string();
 }
 
 void App::BeginEditField(FieldId id, const std::string& initial) {
@@ -326,24 +354,26 @@ void App::NewCanvas(int width, int height) {
 }
 
 void App::SaveToPath(const std::string& path) {
+    std::string resolved = ResolvePath(path);
     std::string error;
-    if (ImageIO::SavePNG(canvas_, path, error)) {
-        currentFilePath = path;
-        SetStatusMessage("Saved: " + path);
+    if (ImageIO::SavePNG(canvas_, resolved, error)) {
+        currentFilePath = resolved;
+        SetStatusMessage("Saved: " + resolved);
     } else {
         SetStatusMessage("Save failed: " + error);
     }
 }
 
 void App::LoadFromPath(const std::string& path) {
+    std::string resolved = ResolvePath(path);
     std::string error;
     Canvas temp;
-    if (ImageIO::LoadPNG(path, temp, error)) {
+    if (ImageIO::LoadPNG(resolved, temp, error)) {
         canvas_ = std::move(temp);
         history_.Clear();
-        currentFilePath = path;
+        currentFilePath = resolved;
         CenterCanvas();
-        SetStatusMessage("Loaded: " + path);
+        SetStatusMessage("Loaded: " + resolved);
     } else {
         SetStatusMessage("Load failed: " + error);
     }

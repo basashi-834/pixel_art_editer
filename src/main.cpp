@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <vector>
@@ -92,6 +93,38 @@ int RunSelfTest(App& app) {
         app.CloseDialog();
     }
 
+    // Path resolution: relative filenames must resolve against the app's
+    // own base directory (not the ambient process cwd), and a
+    // Windows-Explorer-style quoted path ("Copy as path") must still work.
+    {
+        if (app.GetAppBaseDir().empty()) {
+            std::cerr << "[selftest] GetAppBaseDir() is empty\n";
+            return 1;
+        }
+
+        app.SaveToPath("selftest_relative.png");
+        std::string expected = app.ResolvePath("selftest_relative.png");
+        if (app.currentFilePath != expected) {
+            std::cerr << "[selftest] relative save resolved to '" << app.currentFilePath << "', expected '"
+                      << expected << "'\n";
+            return 1;
+        }
+
+        auto files = app.ListPngFilesInBaseDir();
+        if (std::find(files.begin(), files.end(), "selftest_relative.png") == files.end()) {
+            std::cerr << "[selftest] ListPngFilesInBaseDir() did not find the file just saved there\n";
+            return 1;
+        }
+
+        std::string quoted = "  \"" + app.currentFilePath + "\"  ";  // mimics Explorer's "Copy as path"
+        app.LoadFromPath(quoted);
+        if (app.currentFilePath != expected) {
+            std::cerr << "[selftest] quoted-path load failed to resolve/open: got '" << app.currentFilePath
+                       << "'\n";
+            return 1;
+        }
+    }
+
     const char* outPath = std::getenv("PIXEL_EDITOR_SELFTEST_OUT");
     std::string savePath = outPath ? outPath : "/tmp/pixel_editor_selftest.png";
     std::string error;
@@ -150,6 +183,10 @@ int RunSelfTest(App& app) {
 
             app.OpenOpenDialog();
             screenshot(shotPath + suffix + ".open_dialog.png");
+            app.CloseDialog();
+
+            app.OpenSaveAsDialog();
+            screenshot(shotPath + suffix + ".saveas_dialog.png");
             app.CloseDialog();
         }
         i18n::SetLang(i18n::Lang::JA);

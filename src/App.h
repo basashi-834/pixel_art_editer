@@ -124,7 +124,19 @@ public:
     void OpenOpenDialog();
     void CloseDialog();
     void ConfirmDialog();
-    std::vector<std::string> ListPngFilesInCwd() const;
+    std::vector<std::string> ListPngFilesInBaseDir() const;
+
+    // The folder Open/Save resolve relative filenames against, and where
+    // the Open dialog's file list is read from. Fixed to the executable's
+    // own directory (not the OS's ambient "current directory", which
+    // varies by how the exe was launched and isn't visible to the user) so
+    // there's always one predictable, displayable answer to "where am I
+    // relative to?".
+    const std::string& GetAppBaseDir() const { return appBaseDir_; }
+    // Trims whitespace and a surrounding pair of quotes (as produced by
+    // Windows Explorer's "Copy as path"), then resolves relative paths
+    // against GetAppBaseDir(). Absolute paths are returned unchanged.
+    std::string ResolvePath(const std::string& input) const;
 
     // Shared tiny text-edit field used by dialogs + color RGBA inputs
     FieldId activeField = FieldId::None;
@@ -171,4 +183,6 @@ private:
     Uint32 statusMessageExpireTicks_ = 0;
 
     bool sdlInitialized_ = false;
+
+    std::string appBaseDir_;  // set once in Init(); see GetAppBaseDir()
 };
