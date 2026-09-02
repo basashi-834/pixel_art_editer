@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "App.h"
+#include "I18n.h"
 #include "Tools/Tool.h"
 #include "UI.h"
 
@@ -131,6 +132,11 @@ void HandleKeyDown(App& app, const SDL_KeyboardEvent& e) {
     if (key == SDLK_g) {
         if (shift) app.show16Guide = !app.show16Guide;
         else app.showPixelGrid = !app.showPixelGrid;
+        return;
+    }
+
+    if (key == SDLK_l) {
+        i18n::ToggleLang();
         return;
     }
 

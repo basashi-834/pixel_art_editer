@@ -10,6 +10,7 @@
 #include "App.h"
 #include "Color.h"
 #include "Font.h"
+#include "I18n.h"
 
 namespace {
 
@@ -51,6 +52,14 @@ struct Layout {
     SDL_Rect panelRect{};
     SDL_Rect sliderRect[4]{};
     SDL_Rect numRect[4]{};
+    // Panel help text / section labels: computed once here (rather than
+    // re-derived with separate hardcoded offsets in the draw code) so the
+    // swatch grids below them are always positioned to match, regardless of
+    // how many lines the (language-dependent) help text wraps to.
+    std::vector<std::string> helpLines;
+    int helpY = 0;
+    int recentLabelY = 0;
+    int paletteLabelY = 0;
 
     SDL_Rect dlgField1{};
     SDL_Rect dlgField2{};
@@ -66,12 +75,12 @@ struct Layout {
 
 int s_draggingSlider = -1;  // 0=R,1=G,2=B,3=A while a slider drag is active
 
-const char* ToolLabel(ToolType t) {
+std::string ToolLabel(ToolType t) {
     switch (t) {
-        case ToolType::Pencil: return "Pencil (B)";
-        case ToolType::Eraser: return "Eraser (E)";
-        case ToolType::Fill: return "Fill (F)";
-        case ToolType::Eyedropper: return "Picker (I)";
+        case ToolType::Pencil: return i18n::T("Pencil (B)", "鉛筆 (B)");
+        case ToolType::Eraser: return i18n::T("Eraser (E)", "消しゴム (E)");
+        case ToolType::Fill: return i18n::T("Fill (F)", "塗りつぶし (F)");
+        case ToolType::Eyedropper: return i18n::T("Picker (I)", "スポイト (I)");
     }
     return "?";
 }
@@ -88,6 +97,37 @@ void FillRect(SDL_Renderer* r, const SDL_Rect& rect, Color c) {
 void DrawRectOutline(SDL_Renderer* r, const SDL_Rect& rect, Color c) {
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     SDL_RenderDrawRect(r, &rect);
+}
+
+// Greedily wraps `text` (UTF-8) to fit within `maxWidth` screen pixels,
+// breaking at codepoint boundaries. Japanese text has no spaces to break
+// on, so this doesn't try to be word-aware -- for the short technical
+// labels this is used on, breaking mid-word is fine and it guarantees no
+// line ever overflows its container (the bug this exists to prevent).
+std::vector<std::string> WrapToWidth(const std::string& text, int maxWidth, int scale) {
+    std::vector<std::string> lines;
+    std::string current;
+    size_t i = 0;
+    while (i < text.size()) {
+        unsigned char c0 = static_cast<unsigned char>(text[i]);
+        size_t len = 1;
+        if ((c0 & 0xE0) == 0xC0) len = 2;
+        else if ((c0 & 0xF0) == 0xE0) len = 3;
+        else if ((c0 & 0xF8) == 0xF0) len = 4;
+        len = std::min(len, text.size() - i);
+
+        std::string trial = current + text.substr(i, len);
+        if (!current.empty() && Font::TextWidth(trial, scale) > maxWidth) {
+            lines.push_back(current);
+            current = text.substr(i, len);
+        } else {
+            current = trial;
+        }
+        i += len;
+    }
+    if (!current.empty()) lines.push_back(current);
+    if (lines.empty()) lines.push_back("");
+    return lines;
 }
 
 void DrawCenteredText(SDL_Renderer* r, const SDL_Rect& rect, const std::string& text, Color c, int scale = 2) {
@@ -187,14 +227,26 @@ Layout BuildLayout(App& app) {
     // ---- Menu bar ----
     {
         int x = 4;
+        // Internal, stable (always-English) identifiers for the three top
+        // menus -- these drive app.openMenu / id matching and must never
+        // change with the display language. Their on-screen label is
+        // translated separately via menuLabel() below.
         const char* names[] = {"File", "Edit", "View"};
+        auto menuLabel = [](const char* name) -> std::string {
+            std::string n = name;
+            if (n == "File") return i18n::T("File", "ファイル");
+            if (n == "Edit") return i18n::T("Edit", "編集");
+            if (n == "View") return i18n::T("View", "表示");
+            return n;
+        };
         for (const char* name : names) {
-            int w = Font::TextWidth(name) + 20;
+            std::string label = menuLabel(name);
+            int w = Font::TextWidth(label) + 20;
             SDL_Rect r{x, 0, w, layout::kMenuBarHeight};
             ButtonItem b;
             b.rect = r;
             b.id = std::string("menu:") + name;
-            b.label = name;
+            b.label = label;
             b.active = (app.openMenu == name);
             L.buttons.push_back(b);
             x += w + 2;
@@ -217,7 +269,7 @@ Layout BuildLayout(App& app) {
             // find the menu button x to align dropdown under it
             int mx = 4;
             for (const char* n : names) {
-                int w = Font::TextWidth(n) + 20;
+                int w = Font::TextWidth(menuLabel(n)) + 20;
                 if (std::string(n) == menuName) break;
                 mx += w + 2;
             }
@@ -247,25 +299,31 @@ Layout BuildLayout(App& app) {
         };
 
         addDropdownFor("File", {
-                                    {"menuitem:File:New", "New", "Ctrl+N"},
-                                    {"menuitem:File:Open", "Open", "Ctrl+O"},
-                                    {"menuitem:File:Save", "Save", "Ctrl+S"},
-                                    {"menuitem:File:SaveAs", "Save As", "Ctrl+Shift+S"},
-                                    {"menuitem:File:Quit", "Quit", ""},
+                                    {"menuitem:File:New", i18n::T("New", "新規作成"), "Ctrl+N"},
+                                    {"menuitem:File:Open", i18n::T("Open", "開く"), "Ctrl+O"},
+                                    {"menuitem:File:Save", i18n::T("Save", "保存"), "Ctrl+S"},
+                                    {"menuitem:File:SaveAs", i18n::T("Save As", "名前を付けて保存"),
+                                     "Ctrl+Shift+S"},
+                                    {"menuitem:File:Quit", i18n::T("Quit", "終了"), ""},
                                 });
 
         addDropdownFor("Edit", {
-                                    {"menuitem:Edit:Undo", "Undo", "Ctrl+Z"},
-                                    {"menuitem:Edit:Redo", "Redo", "Ctrl+Y"},
+                                    {"menuitem:Edit:Undo", i18n::T("Undo", "元に戻す"), "Ctrl+Z"},
+                                    {"menuitem:Edit:Redo", i18n::T("Redo", "やり直し"), "Ctrl+Y"},
                                 });
 
-        addDropdownFor("View", {
-                                    {"menuitem:View:PixelGrid", "Pixel Grid", "G", true, app.showPixelGrid},
-                                    {"menuitem:View:Guide16", "16x16 Guide", "Shift+G", true, app.show16Guide},
-                                    {"menuitem:View:Transparency", "Transparency Grid", "", true,
-                                     app.showTransparencyGrid},
-                                    {"menuitem:View:ColorPanel", "Color Panel", "", true, app.colorPanelOpen_},
-                                });
+        addDropdownFor(
+            "View",
+            {
+                {"menuitem:View:PixelGrid", i18n::T("Pixel Grid", "ピクセルグリッド"), "G", true,
+                 app.showPixelGrid},
+                {"menuitem:View:Guide16", i18n::T("16x16 Guide", "16x16ガイド"), "Shift+G", true, app.show16Guide},
+                {"menuitem:View:Transparency", i18n::T("Transparency Grid", "透過グリッド"), "", true,
+                 app.showTransparencyGrid},
+                {"menuitem:View:ColorPanel", i18n::T("Color Panel", "カラーパネル"), "", true,
+                 app.colorPanelOpen_},
+                {"menuitem:View:Language", i18n::T("Language: 日本語", "言語: English"), "L"},
+            });
     }
 
     // ---- Toolbar ----
@@ -291,14 +349,16 @@ Layout BuildLayout(App& app) {
         x += 12;
 
         {
-            SDL_Rect r{x, y, Font::TextWidth("Undo") + 16, h};
-            ButtonItem b{r, "action:Undo", "Undo", false, app.GetHistory().CanUndo()};
+            std::string label = i18n::T("Undo", "元に戻す");
+            SDL_Rect r{x, y, Font::TextWidth(label) + 16, h};
+            ButtonItem b{r, "action:Undo", label, false, app.GetHistory().CanUndo()};
             L.buttons.push_back(b);
             x += r.w + 4;
         }
         {
-            SDL_Rect r{x, y, Font::TextWidth("Redo") + 16, h};
-            ButtonItem b{r, "action:Redo", "Redo", false, app.GetHistory().CanRedo()};
+            std::string label = i18n::T("Redo", "やり直し");
+            SDL_Rect r{x, y, Font::TextWidth(label) + 16, h};
+            ButtonItem b{r, "action:Redo", label, false, app.GetHistory().CanRedo()};
             L.buttons.push_back(b);
             x += r.w + 12;
         }
@@ -350,9 +410,28 @@ Layout BuildLayout(App& app) {
         }
         (void)rowLabels;
 
+        // Help text: wrapped to the panel's actual width so translated
+        // (typically denser/wider Japanese) text can never overflow it.
+        // Computed once here; everything below (section labels, swatch
+        // grids) is positioned relative to how many lines this took.
+        int textMaxWidth = layout::kColorPanelWidth - 30;
+        L.helpLines.push_back(i18n::T("16bit=65536 colors", "16bit = 65536色"));
+        L.helpLines.push_back("R:5bit G:6bit B:5bit");
+        for (auto& line : WrapToWidth(i18n::T("0-255 input is rounded to the nearest 16bit value",
+                                                "0〜255の入力値は自動的に最も近い16bit値に丸められます"),
+                                       textMaxWidth, 1))
+            L.helpLines.push_back(line);
+
+        int lineH = Font::LineHeight(1) + 3;
+        L.helpY = fy + 30;
+        int y = L.helpY + static_cast<int>(L.helpLines.size()) * lineH + 12;
+
+        L.recentLabelY = y;
+        y += lineH + 2;
+
         // Recent colors grid
         int gx = fx;
-        int gy = fy + 40;
+        int gy = y;
         const auto& recent = app.GetRecentColors();
         for (size_t i = 0; i < recent.size(); ++i) {
             int col = static_cast<int>(i % 8);
@@ -363,9 +442,13 @@ Layout BuildLayout(App& app) {
         }
         int recentRows = static_cast<int>((recent.size() + 7) / 8);
         if (recentRows == 0) recentRows = 1;
+        y = gy + recentRows * 22 + 16;
+
+        L.paletteLabelY = y;
+        y += lineH + 2;
 
         // Preset palette grid
-        int py2 = gy + recentRows * 22 + 26;
+        int py2 = y;
         const auto& palette = PresetPalette();
         for (size_t i = 0; i < palette.size(); ++i) {
             int col = static_cast<int>(i % 8);
@@ -380,20 +463,27 @@ Layout BuildLayout(App& app) {
     if (app.dialogMode != DialogMode::None) {
         L.hasDialog = true;
         if (app.dialogMode == DialogMode::NewCanvas) {
-            SDL_Rect box{W / 2 - 190, H / 2 - 130, 380, 260};
+            SDL_Rect box{W / 2 - 210, H / 2 - 130, 420, 260};
             L.dialogBox = box;
 
-            SDL_Rect modePixel{box.x + 20, box.y + 40, 160, 28};
-            SDL_Rect modeTiles{box.x + 200, box.y + 40, 160, 28};
-            L.buttons.push_back(ButtonItem{modePixel, "dialog:ModePixel", "Pixel Size",
+            // Mode buttons auto-size to their (possibly wider, in Japanese)
+            // label instead of a fixed width, so translated text never
+            // overflows the button box.
+            std::string modePixelLabel = i18n::T("Pixel Size", "ピクセル指定");
+            std::string modeTilesLabel = i18n::T("Tile Size (16px)", "タイル指定(16px)");
+            int modePixelW = Font::TextWidth(modePixelLabel) + 24;
+            int modeTilesW = Font::TextWidth(modeTilesLabel) + 24;
+            SDL_Rect modePixel{box.x + 20, box.y + 40, modePixelW, 28};
+            SDL_Rect modeTiles{modePixel.x + modePixelW + 12, box.y + 40, modeTilesW, 28};
+            L.buttons.push_back(ButtonItem{modePixel, "dialog:ModePixel", modePixelLabel,
                                             app.newCanvasSizeMode == NewCanvasSizeMode::Pixels, true});
-            L.buttons.push_back(ButtonItem{modeTiles, "dialog:ModeTiles", "Tile Size (16px)",
+            L.buttons.push_back(ButtonItem{modeTiles, "dialog:ModeTiles", modeTilesLabel,
                                             app.newCanvasSizeMode == NewCanvasSizeMode::Tiles, true});
 
             L.hasField1 = true;
             L.hasField2 = true;
-            L.dlgField1 = SDL_Rect{box.x + 140, box.y + 100, 80, 26};
-            L.dlgField2 = SDL_Rect{box.x + 140, box.y + 140, 80, 26};
+            L.dlgField1 = SDL_Rect{box.x + 160, box.y + 100, 80, 26};
+            L.dlgField2 = SDL_Rect{box.x + 160, box.y + 140, 80, 26};
             if (app.newCanvasSizeMode == NewCanvasSizeMode::Pixels) {
                 L.field1Id = FieldId::NewWidth;
                 L.field2Id = FieldId::NewHeight;
@@ -402,10 +492,16 @@ Layout BuildLayout(App& app) {
                 L.field2Id = FieldId::NewTilesY;
             }
 
-            SDL_Rect ok{box.x + 60, box.y + 210, 100, 32};
-            SDL_Rect cancel{box.x + 220, box.y + 210, 100, 32};
-            L.buttons.push_back(ButtonItem{ok, "dialog:OK", "Create", false, true});
-            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", "Cancel", false, true});
+            std::string createLabel = i18n::T("Create", "作成");
+            std::string cancelLabel = i18n::T("Cancel", "キャンセル");
+            int createW = Font::TextWidth(createLabel) + 32;
+            int cancelW = Font::TextWidth(cancelLabel) + 32;
+            int pairW = createW + 20 + cancelW;
+            int pairX = box.x + (box.w - pairW) / 2;
+            SDL_Rect ok{pairX, box.y + 210, createW, 32};
+            SDL_Rect cancel{pairX + createW + 20, box.y + 210, cancelW, 32};
+            L.buttons.push_back(ButtonItem{ok, "dialog:OK", createLabel, false, true});
+            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         } else if (app.dialogMode == DialogMode::Open) {
             SDL_Rect box{W / 2 - 220, H / 2 - 190, 440, 380};
             L.dialogBox = box;
@@ -421,10 +517,16 @@ Layout BuildLayout(App& app) {
                 ly += 24;
             }
 
-            SDL_Rect ok{box.x + 100, box.y + 340 - 10, 100, 32};
-            SDL_Rect cancel{box.x + 240, box.y + 340 - 10, 100, 32};
-            L.buttons.push_back(ButtonItem{ok, "dialog:OK", "Open", false, true});
-            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", "Cancel", false, true});
+            std::string openLabel = i18n::T("Open", "開く");
+            std::string cancelLabel = i18n::T("Cancel", "キャンセル");
+            int okW = Font::TextWidth(openLabel) + 32;
+            int cancelW = Font::TextWidth(cancelLabel) + 32;
+            int pairW = okW + 20 + cancelW;
+            int pairX = box.x + (box.w - pairW) / 2;
+            SDL_Rect ok{pairX, box.y + 340 - 10, okW, 32};
+            SDL_Rect cancel{pairX + okW + 20, box.y + 340 - 10, cancelW, 32};
+            L.buttons.push_back(ButtonItem{ok, "dialog:OK", openLabel, false, true});
+            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         } else if (app.dialogMode == DialogMode::SaveAs) {
             SDL_Rect box{W / 2 - 220, H / 2 - 80, 440, 160};
             L.dialogBox = box;
@@ -432,10 +534,16 @@ Layout BuildLayout(App& app) {
             L.hasPathField = true;
             L.dlgPathField = SDL_Rect{box.x + 100, box.y + 50, 320, 26};
 
-            SDL_Rect ok{box.x + 100, box.y + 100, 100, 32};
-            SDL_Rect cancel{box.x + 240, box.y + 100, 100, 32};
-            L.buttons.push_back(ButtonItem{ok, "dialog:OK", "Save", false, true});
-            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", "Cancel", false, true});
+            std::string saveLabel = i18n::T("Save", "保存");
+            std::string cancelLabel = i18n::T("Cancel", "キャンセル");
+            int okW = Font::TextWidth(saveLabel) + 32;
+            int cancelW = Font::TextWidth(cancelLabel) + 32;
+            int pairW = okW + 20 + cancelW;
+            int pairX = box.x + (box.w - pairW) / 2;
+            SDL_Rect ok{pairX, box.y + 100, okW, 32};
+            SDL_Rect cancel{pairX + okW + 20, box.y + 100, cancelW, 32};
+            L.buttons.push_back(ButtonItem{ok, "dialog:OK", saveLabel, false, true});
+            L.buttons.push_back(ButtonItem{cancel, "dialog:Cancel", cancelLabel, false, true});
         }
     }
 
@@ -464,6 +572,7 @@ void HandleButtonClick(App& app, const std::string& id) {
     if (id == "menuitem:View:Guide16") { app.show16Guide = !app.show16Guide; return; }
     if (id == "menuitem:View:Transparency") { app.showTransparencyGrid = !app.showTransparencyGrid; return; }
     if (id == "menuitem:View:ColorPanel") { app.ToggleColorPanel(); return; }
+    if (id == "menuitem:View:Language") { i18n::ToggleLang(); return; }
 
     if (id == "tool:Pencil") { app.SetCurrentTool(ToolType::Pencil); return; }
     if (id == "tool:Eraser") { app.SetCurrentTool(ToolType::Eraser); return; }
@@ -557,7 +666,7 @@ void DrawChrome(App& app) {
     if (L.hasPanel) {
         int px = L.panelRect.x;
         int py = L.panelRect.y;
-        Font::DrawText(r, px + 15, py + 10, "Color (RGB565)", kText, 2);
+        Font::DrawText(r, px + 15, py + 10, i18n::T("Color (RGB565)", "カラー (RGB565)"), kText, 2);
 
         SDL_Rect preview{px + 15, py + 30, 60, 32};
         DrawColorSwatch(r, preview, app.GetCurrentColor());
@@ -593,19 +702,15 @@ void DrawChrome(App& app) {
             DrawCenteredText(r, nr, val, kText, 1);
         }
 
-        int helpY = L.sliderRect[3].y + 30;
-        Font::DrawText(r, px + 15, helpY, "16bit=65536 colors", kTextDim, 1);
-        Font::DrawText(r, px + 15, helpY + 12, "R:5bit G:6bit B:5bit", kTextDim, 1);
-        Font::DrawText(r, px + 15, helpY + 24, "0-255 input is rounded", kTextDim, 1);
-        Font::DrawText(r, px + 15, helpY + 36, "to the nearest 16bit value", kTextDim, 1);
+        int lineH = Font::LineHeight(1) + 3;
+        int hy = L.helpY;
+        for (const auto& line : L.helpLines) {
+            Font::DrawText(r, px + 15, hy, line, kTextDim, 1);
+            hy += lineH;
+        }
 
-        int recentLabelY = helpY + 56;
-        Font::DrawText(r, px + 15, recentLabelY, "Recent", kTextDim, 1);
-        int paletteLabelY = recentLabelY + 22 * static_cast<int>((app.GetRecentColors().size() + 7) / 8 == 0
-                                                                       ? 1
-                                                                       : (app.GetRecentColors().size() + 7) / 8) +
-                             10;
-        Font::DrawText(r, px + 15, paletteLabelY, "Palette", kTextDim, 1);
+        Font::DrawText(r, px + 15, L.recentLabelY, i18n::T("Recent", "最近使った色"), kTextDim, 1);
+        Font::DrawText(r, px + 15, L.paletteLabelY, i18n::T("Palette", "パレット"), kTextDim, 1);
     }
 
     for (const auto& b : L.buttons) {
@@ -628,12 +733,15 @@ void DrawChrome(App& app) {
         char buf[256];
         std::string toolName = ToolLabel(app.GetCurrentTool());
         if (over) {
-            std::snprintf(buf, sizeof(buf), "Image: %dx%d   Zoom: %dx   X:%d Y:%d   Tool: %s",
-                          app.GetCanvas().GetWidth(), app.GetCanvas().GetHeight(), app.zoom, px, py,
-                          toolName.c_str());
+            std::string fmt = i18n::T("Image: %dx%d   Zoom: %dx   X:%d Y:%d   Tool: %s",
+                                       "画像: %dx%d   ズーム: %dx   X:%d Y:%d   ツール: %s");
+            std::snprintf(buf, sizeof(buf), fmt.c_str(), app.GetCanvas().GetWidth(), app.GetCanvas().GetHeight(),
+                          app.zoom, px, py, toolName.c_str());
         } else {
-            std::snprintf(buf, sizeof(buf), "Image: %dx%d   Zoom: %dx   X:- Y:-   Tool: %s",
-                          app.GetCanvas().GetWidth(), app.GetCanvas().GetHeight(), app.zoom, toolName.c_str());
+            std::string fmt = i18n::T("Image: %dx%d   Zoom: %dx   X:- Y:-   Tool: %s",
+                                       "画像: %dx%d   ズーム: %dx   X:- Y:-   ツール: %s");
+            std::snprintf(buf, sizeof(buf), fmt.c_str(), app.GetCanvas().GetWidth(), app.GetCanvas().GetHeight(),
+                          app.zoom, toolName.c_str());
         }
         Font::DrawText(r, 8, y + 4, buf, kText, 2);
 
@@ -660,9 +768,9 @@ void DrawChrome(App& app) {
         FillRect(r, L.dialogBox, kPanelBg);
         DrawRectOutline(r, L.dialogBox, kBorder);
 
-        std::string title = app.dialogMode == DialogMode::NewCanvas ? "New Canvas"
-                             : app.dialogMode == DialogMode::Open    ? "Open PNG"
-                                                                      : "Save As";
+        std::string title = app.dialogMode == DialogMode::NewCanvas ? i18n::T("New Canvas", "新規キャンバス")
+                             : app.dialogMode == DialogMode::Open    ? i18n::T("Open PNG", "PNGを開く")
+                                                                      : i18n::T("Save As", "名前を付けて保存");
         Font::DrawText(r, L.dialogBox.x + 20, L.dialogBox.y + 12, title, kText, 2);
 
         for (const auto& b : L.buttons) {
@@ -671,10 +779,12 @@ void DrawChrome(App& app) {
         }
 
         if (app.dialogMode == DialogMode::NewCanvas) {
-            const char* l1 = app.newCanvasSizeMode == NewCanvasSizeMode::Pixels ? "Width:" : "Tiles X:";
-            const char* l2 = app.newCanvasSizeMode == NewCanvasSizeMode::Pixels ? "Height:" : "Tiles Y:";
-            Font::DrawText(r, L.dlgField1.x - 90, L.dlgField1.y + 4, l1, kText, 2);
-            Font::DrawText(r, L.dlgField2.x - 90, L.dlgField2.y + 4, l2, kText, 2);
+            std::string l1 = app.newCanvasSizeMode == NewCanvasSizeMode::Pixels ? i18n::T("Width:", "幅:")
+                                                                                 : i18n::T("Tiles X:", "横タイル数:");
+            std::string l2 = app.newCanvasSizeMode == NewCanvasSizeMode::Pixels ? i18n::T("Height:", "高さ:")
+                                                                                 : i18n::T("Tiles Y:", "縦タイル数:");
+            Font::DrawText(r, L.dlgField1.x - Font::TextWidth(l1) - 10, L.dlgField1.y + 4, l1, kText, 2);
+            Font::DrawText(r, L.dlgField2.x - Font::TextWidth(l2) - 10, L.dlgField2.y + 4, l2, kText, 2);
 
             std::string v1 = FieldValueOrBuffer(
                 app, L.field1Id,
@@ -698,7 +808,8 @@ void DrawChrome(App& app) {
                 Font::DrawText(r, L.dlgField1.x, L.dlgField2.y + 40, buf, kTextDim, 2);
             }
         } else if (app.dialogMode == DialogMode::Open || app.dialogMode == DialogMode::SaveAs) {
-            const char* lbl = app.dialogMode == DialogMode::Open ? "Path:" : "Filename:";
+            std::string lbl = app.dialogMode == DialogMode::Open ? i18n::T("Path:", "パス:")
+                                                                  : i18n::T("Filename:", "ファイル名:");
             Font::DrawText(r, L.dlgPathField.x - Font::TextWidth(lbl) - 10, L.dlgPathField.y + 4, lbl, kText, 2);
             bool editing = app.activeField == FieldId::PathField;
             FillRect(r, L.dlgPathField, editing ? kFieldActiveBg : kFieldBg);
@@ -707,8 +818,8 @@ void DrawChrome(App& app) {
             Font::DrawText(r, L.dlgPathField.x + 4, L.dlgPathField.y + 5, v, kText, 1);
 
             if (app.dialogMode == DialogMode::Open && L.openFiles.empty()) {
-                Font::DrawText(r, L.dialogBox.x + 20, L.dlgPathField.y + 40, "(no .png files found here)", kTextDim,
-                                1);
+                Font::DrawText(r, L.dialogBox.x + 20, L.dlgPathField.y + 40,
+                                i18n::T("(no .png files found here)", "(.pngファイルが見つかりません)"), kTextDim, 1);
             }
         }
     }

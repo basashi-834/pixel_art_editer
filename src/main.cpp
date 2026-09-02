@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "App.h"
+#include "I18n.h"
 #include "ImageIO.h"
 #include "Renderer.h"
 #include "Tools/Tool.h"
@@ -101,25 +102,34 @@ int RunSelfTest(App& app) {
             }
         };
 
-        screenshot(shotPath);
+        for (i18n::Lang lang : {i18n::Lang::JA, i18n::Lang::EN}) {
+            i18n::SetLang(lang);
+            std::string suffix = lang == i18n::Lang::JA ? ".ja" : ".en";
 
-        app.openMenu = "File";
-        screenshot(std::string(shotPath) + ".menu_file.png");
-        app.openMenu = "View";
-        screenshot(std::string(shotPath) + ".menu_view.png");
-        app.openMenu = "";
+            screenshot(shotPath + suffix + ".png");
+
+            app.openMenu = "File";
+            screenshot(shotPath + suffix + ".menu_file.png");
+            app.openMenu = "View";
+            screenshot(shotPath + suffix + ".menu_view.png");
+            app.openMenu = "";
+
+            app.OpenNewCanvasDialog();
+            app.newCanvasSizeMode = NewCanvasSizeMode::Tiles;
+            screenshot(shotPath + suffix + ".new_dialog_tiles.png");
+            app.newCanvasSizeMode = NewCanvasSizeMode::Pixels;
+            screenshot(shotPath + suffix + ".new_dialog_pixels.png");
+            app.CloseDialog();
+
+            app.OpenOpenDialog();
+            screenshot(shotPath + suffix + ".open_dialog.png");
+            app.CloseDialog();
+        }
+        i18n::SetLang(i18n::Lang::JA);
 
         app.SetZoom(2, app.windowWidth_ / 2, (app.CanvasAreaTop() + app.CanvasAreaBottom()) / 2);
         app.CenterCanvas();
         screenshot(std::string(shotPath) + ".zoomed_out.png");
-
-        app.SetZoom(8, app.windowWidth_ / 2, app.CanvasAreaTop());
-        app.CenterCanvas();
-        app.OpenNewCanvasDialog();
-        screenshot(std::string(shotPath) + ".new_dialog.png");
-        app.newCanvasSizeMode = NewCanvasSizeMode::Pixels;
-        screenshot(std::string(shotPath) + ".new_dialog_pixels.png");
-        app.CloseDialog();
     }
 
     return 0;

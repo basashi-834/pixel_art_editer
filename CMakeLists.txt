@@ -10,6 +10,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(SDL2 REQUIRED)
+find_package(SDL2_ttf REQUIRED)
 
 add_executable(PixelSpriteEditor
     src/main.cpp
@@ -20,6 +21,7 @@ add_executable(PixelSpriteEditor
     src/Input.cpp
     src/UI.cpp
     src/Font.cpp
+    src/I18n.cpp
     src/History.cpp
     src/ImageIO.cpp
     src/Tools/PencilTool.cpp
@@ -31,11 +33,10 @@ add_executable(PixelSpriteEditor
 target_include_directories(PixelSpriteEditor PRIVATE
     src
     third_party/stb
-    third_party/font5x7
     ${SDL2_INCLUDE_DIRS}
 )
 
-target_link_libraries(PixelSpriteEditor PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(PixelSpriteEditor PRIVATE ${SDL2_LIBRARIES} SDL2_ttf::SDL2_ttf)
 target_compile_options(PixelSpriteEditor PRIVATE ${SDL2_CFLAGS_OTHER})
 
 if(MSVC)

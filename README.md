@@ -27,12 +27,13 @@
 - CMake 3.16以上
 - C++17 対応コンパイラ（GCC 13 で確認済み）
 - SDL2 開発ライブラリ（`libsdl2-dev`）
+- SDL2_ttf 開発ライブラリ（`libsdl2-ttf-dev`）※UI文字描画（日本語/英語）に使用
 
 Ubuntu / Debian系での依存パッケージインストール例:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake libsdl2-dev
+sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
 ```
 
 ## 使用ライブラリと採用理由
@@ -41,10 +42,11 @@ sudo apt-get install -y build-essential cmake libsdl2-dev
 |---|---|---|
 | **SDL2** | ウィンドウ生成・描画・入力 | 依存が軽く、Linux環境に標準的なパッケージ (`libsdl2-dev`) として存在し、`cmake`のconfig-modeにもそのまま対応。Nearest Neighbor拡大（`SDL_HINT_RENDER_SCALE_QUALITY=0` + `SDL_ScaleModeNearest`）や、ピクセル単位のストリーミングテクスチャ更新など、本アプリの要件と相性が良い。 |
 | **stb_image.h / stb_image_write.h**（[nothings/stb](https://github.com/nothings/stb)） | PNG読み込み・書き出し | ヘッダオンリーでビルド設定が不要、依存ライブラリが増えない。RGBA8888のPNGを実解像度のまま読み書きできる。`third_party/stb/` にベンダリング済み（Public Domain / MIT license）。 |
-| 独自5x7ビットマップフォント（`third_party/font5x7/`、[Adafruit_GFX](https://github.com/adafruit/Adafruit-GFX-Library) 由来） | メニュー・ツールバー・ステータスバー等のUI文字描画 | SDL2_ttfやシステムフォントへの依存を避けるため、コンパイル済みのビットマップフォントデータのみを使用。フォントファイルの有無に左右されず、どの環境でも同じ見た目でビルド・起動できる（BSD license、`third_party/font5x7/LICENSE.txt`参照）。 |
+| **SDL2_ttf** + 埋め込み**PixelMplus10**フォント（[itouhiro/PixelMplus](https://github.com/itouhiro/PixelMplus)、M+ FONT LICENSE） | メニュー・ツールバー・ステータスバー等のUI文字描画（日本語/英語） | 日本語（ひらがな・カタカナ・JIS第1/第2水準漢字）を表示するには、ASCIIのみの自前ビットマップフォントでは不可能なため、SDL2_ttfを導入。フォントはドット絵調のPixelMplus10を採用し、本エディタの見た目に合わせつつ英語・日本語を同じフォント1つで描画できるようにしている。フォントファイルは `src/PixelMplusFontData.h` にC配列として埋め込み済みで、実行時に外部ファイルを探す必要がない（単体で完結した実行ファイルにできる）。ライセンス全文は `third_party/pixelmplus/LICENSE_M+FONTS.txt`。 |
 
 Dear ImGui / SFML / raylib も候補でしたが、「依存を増やさずビルドしやすくする」ことを
-優先し、SDL2 + stb + 自前の最小限UI描画という構成にしています。
+優先し、SDL2 (+ 日本語表示のためのSDL2_ttf) + stb + 自前の最小限UI描画という構成に
+しています。
 
 ## ビルド方法
 
@@ -76,8 +78,9 @@ Windows用の実行ファイルを自動ビルドします。
 1. GitHubリポジトリの **Actions** タブを開く
 2. 一番上の "Build Windows executable" のワークフロー実行を開く
 3. 画面下部の **Artifacts** に `PixelSpriteEditor-windows-x64` があるのでダウンロード（zip）
-4. 展開すると `PixelSpriteEditor.exe` と `SDL2.dll` が入っているので、同じフォルダに
-   置いたまま `PixelSpriteEditor.exe` をダブルクリックして起動
+4. 展開すると `PixelSpriteEditor.exe` と、実行に必要な `SDL2.dll` / `SDL2_ttf.dll` などの
+   DLLが入っているので、**すべて同じフォルダに置いたまま** `PixelSpriteEditor.exe` を
+   ダブルクリックして起動（DLLだけを別の場所に移動すると起動できません）
 
 手動でビルドを走らせたい場合は、Actionsタブの当該ワークフローで **Run workflow** から
 実行できます。
@@ -86,7 +89,7 @@ Windows用の実行ファイルを自動ビルドします。
 
 ```powershell
 # MSYS2 (https://www.msys2.org/) の MINGW64 シェルで実行
-pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_ttf
 cmake -S . -B build -G Ninja
 cmake --build build
 ./build/PixelSpriteEditor.exe
@@ -179,6 +182,12 @@ cmake --build build
 `Ctrl+Z` (Undo) / `Ctrl+Y` (Redo) に対応しています。Pencil・Eraser・Fillの操作を
 取り消し・やり直しできます。
 
+### 言語切り替え（日本語 / English）
+
+`View` メニュー最下部の「言語: English」/「Language: 日本語」をクリックするか、
+ショートカット `L` で日本語UIと英語UIを切り替えられます。メニュー・ツールバー・
+ダイアログ・ステータスバーなど全てのUI文字列が対象です（デフォルトは日本語）。
+
 ## ショートカットキー
 
 | キー | 動作 |
@@ -195,6 +204,7 @@ cmake --build build
 | `Ctrl+Y` | Redo |
 | `G` | 1px Grid ON/OFF |
 | `Shift+G` | 16x16 Guide ON/OFF |
+| `L` | 言語切り替え（日本語 / English） |
 | マウスホイール | ズームイン/アウト |
 | 中ボタンドラッグ / `Space`+左ドラッグ | キャンバス移動 |
 | `Esc` | 開いているダイアログを閉じる |
@@ -205,6 +215,8 @@ cmake --build build
 pixel_art_editer/
 ├── CMakeLists.txt
 ├── README.md
+├── .github/workflows/
+│   └── build-windows.yml # push時にWindows用exeを自動ビルド（MSYS2 + SDL2/SDL2_ttf）
 ├── src/
 │   ├── main.cpp          # エントリポイント（+ ヘッドレスセルフテストモード）
 │   ├── App.h / .cpp       # アプリ全体の状態（キャンバス/ツール/色/表示設定/ダイアログ）とメインループ
@@ -212,7 +224,9 @@ pixel_art_editer/
 │   ├── Color.h / .cpp     # RGB565量子化ヘルパー
 │   ├── Renderer.h / .cpp  # キャンバスの拡大表示・チェッカー柄・グリッド/ガイド描画
 │   ├── UI.h / .cpp        # メニュー/ツールバー/カラーパネル/ダイアログ/ステータスバー
-│   ├── Font.h / .cpp      # 組み込みビットマップフォントでのテキスト描画
+│   ├── Font.h / .cpp      # SDL2_ttfベースのUIテキスト描画（埋め込みPixelMplusフォント使用）
+│   ├── PixelMplusFontData.h # PixelMplus10-Regular.ttf を埋め込んだC配列（自動生成）
+│   ├── I18n.h / .cpp      # 日本語/英語の切り替え（`i18n::T("English", "日本語")`）
 │   ├── Input.h / .cpp     # マウス/キーボード入力→ピクセル座標変換・ショートカット
 │   ├── History.h / .cpp   # Undo/Redo（ストローク単位の差分記録）
 │   ├── ImageIO.h / .cpp   # PNG読み込み・書き出し（stb_image使用）
@@ -225,7 +239,7 @@ pixel_art_editer/
 │       └── LineUtil.h         # ドラッグ描画の隙間を埋めるBresenham直線補間
 └── third_party/
     ├── stb/               # stb_image.h, stb_image_write.h（PNG I/O）
-    └── font5x7/            # UI用の組み込みビットマップフォント
+    └── pixelmplus/         # PixelMplus10-Regular.ttf 本体 + ライセンス（埋め込み元）
 ```
 
 ## 設計メモ（将来拡張について）

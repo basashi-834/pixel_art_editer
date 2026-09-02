@@ -8,6 +8,7 @@
 #include <iostream>
 #include <iterator>
 
+#include "Font.h"
 #include "ImageIO.h"
 #include "Input.h"
 #include "Renderer.h"
@@ -62,6 +63,11 @@ bool App::Init() {
 
     SDL_StartTextInput();
 
+    if (!Font::Init()) {
+        std::cerr << "Font::Init failed (SDL_ttf): " << SDL_GetError() << std::endl;
+        return false;
+    }
+
     pencilTool_ = std::make_unique<PencilTool>();
     eraserTool_ = std::make_unique<EraserTool>();
     fillTool_ = std::make_unique<FillTool>();
@@ -95,6 +101,7 @@ void App::Run() {
 }
 
 void App::Shutdown() {
+    Font::Shutdown();  // must run while sdlRenderer_ is still valid (owns cached textures)
     if (sdlRenderer_) {
         SDL_DestroyRenderer(sdlRenderer_);
         sdlRenderer_ = nullptr;
