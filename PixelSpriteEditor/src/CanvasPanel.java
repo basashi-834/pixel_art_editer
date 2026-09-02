@@ -246,6 +246,9 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
     @Override
     public void mouseWheelMoved(MouseWheelEvent e) {
+        // Only Ctrl+wheel zooms; a plain wheel scroll does nothing (there's no
+        // scrollable content here, and the user asked wheel-alone not to zoom).
+        if (!e.isControlDown()) return;
         if (e.getWheelRotation() < 0) {
             state.zoomIn(e.getX(), e.getY());
         } else if (e.getWheelRotation() > 0) {

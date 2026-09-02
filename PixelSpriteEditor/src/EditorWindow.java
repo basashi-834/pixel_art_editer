@@ -10,6 +10,7 @@ import java.util.EnumMap;
 import java.util.Map;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFileChooser;
@@ -136,11 +137,12 @@ public class EditorWindow extends JFrame {
         JToolBar bar = new JToolBar();
         bar.setFloatable(false);
 
-        addToolButton(bar, EditorState.ToolType.PENCIL, "鉛筆");
-        addToolButton(bar, EditorState.ToolType.ERASER, "消しゴム");
-        addToolButton(bar, EditorState.ToolType.FILL, "塗りつぶし");
-        addToolButton(bar, EditorState.ToolType.EYEDROPPER, "スポイト");
-        addToolButton(bar, EditorState.ToolType.LINE, "直線");
+        ButtonGroup toolGroup = new ButtonGroup();
+        addToolButton(bar, toolGroup, EditorState.ToolType.PENCIL, "鉛筆");
+        addToolButton(bar, toolGroup, EditorState.ToolType.ERASER, "消しゴム");
+        addToolButton(bar, toolGroup, EditorState.ToolType.FILL, "塗りつぶし");
+        addToolButton(bar, toolGroup, EditorState.ToolType.EYEDROPPER, "スポイト");
+        addToolButton(bar, toolGroup, EditorState.ToolType.LINE, "直線");
 
         bar.addSeparator();
         undoBtn = new JButton("元に戻す");
@@ -164,9 +166,10 @@ public class EditorWindow extends JFrame {
         return bar;
     }
 
-    private void addToolButton(JToolBar bar, EditorState.ToolType type, String label) {
+    private void addToolButton(JToolBar bar, ButtonGroup group, EditorState.ToolType type, String label) {
         JToggleButton btn = new JToggleButton(label);
         btn.addActionListener(e -> state.setCurrentToolType(type));
+        group.add(btn);
         bar.add(btn);
         toolButtons.put(type, btn);
     }
