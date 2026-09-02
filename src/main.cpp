@@ -103,6 +103,12 @@ int RunSelfTest(App& app) {
 
         screenshot(shotPath);
 
+        app.openMenu = "File";
+        screenshot(std::string(shotPath) + ".menu_file.png");
+        app.openMenu = "View";
+        screenshot(std::string(shotPath) + ".menu_view.png");
+        app.openMenu = "";
+
         app.SetZoom(2, app.windowWidth_ / 2, (app.CanvasAreaTop() + app.CanvasAreaBottom()) / 2);
         app.CenterCanvas();
         screenshot(std::string(shotPath) + ".zoomed_out.png");

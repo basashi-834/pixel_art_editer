@@ -34,10 +34,15 @@ struct ButtonItem {
     bool enabled = true;
     bool checkbox = false;
     bool checked = false;
+    std::string shortcut;  // menu items only: right-aligned shortcut hint
 };
 
 struct Layout {
     std::vector<ButtonItem> buttons;
+    // Dropdown menu items (File/Edit/View), drawn and hit-tested in a
+    // separate pass so they always render on top of the toolbar/panel
+    // instead of being painted over by them.
+    std::vector<ButtonItem> dropdownButtons;
 
     bool hasDialog = false;
     SDL_Rect dialogBox{};
@@ -102,6 +107,25 @@ void DrawButton(SDL_Renderer* r, const ButtonItem& b, int mx, int my) {
     if (b.checkbox) label = (b.checked ? std::string("[x] ") : std::string("[ ] ")) + b.label;
     Color textColor = b.enabled ? kText : kTextDim;
     DrawCenteredText(r, b.rect, label, textColor);
+}
+
+// Menu dropdown row: label left-aligned, shortcut hint right-aligned, so
+// long combinations never need manual padding and never overflow the box
+// (the box itself is sized to fit both in BuildLayout).
+void DrawMenuItem(SDL_Renderer* r, const ButtonItem& b, int mx, int my) {
+    bool hovered = PointIn(b.rect, mx, my);
+    FillRect(r, b.rect, hovered ? kButtonHover : kPanelBg);
+    DrawRectOutline(r, b.rect, kBorder);
+
+    std::string label = b.checkbox ? (b.checked ? std::string("[x] ") : std::string("[ ] ")) + b.label : b.label;
+    int ty = b.rect.y + (b.rect.h - Font::LineHeight(2)) / 2;
+    Font::DrawText(r, b.rect.x + 8, ty, label, kText, 2);
+
+    if (!b.shortcut.empty()) {
+        int sw = Font::TextWidth(b.shortcut, 1);
+        int sy = b.rect.y + (b.rect.h - Font::LineHeight(1)) / 2;
+        Font::DrawText(r, b.rect.x + b.rect.w - sw - 8, sy, b.shortcut, kTextDim, 1);
+    }
 }
 
 // Draws a checker-backed swatch (so alpha is visible) with `c` composited
@@ -176,9 +200,19 @@ Layout BuildLayout(App& app) {
             x += w + 2;
         }
 
-        // Dropdown items
-        auto addDropdownFor = [&](const char* menuName, std::vector<std::pair<std::string, std::string>> items,
-                                   std::vector<bool> checks, std::vector<bool> isCheckbox) {
+        // Dropdown items. Each entry is {id, label, shortcut, checkbox, checked}.
+        // Label and shortcut are drawn separately (left/right-aligned) and the
+        // box auto-sizes to fit them, so nothing needs manual space-padding
+        // and nothing overflows the box.
+        struct MenuEntry {
+            std::string id;
+            std::string label;
+            std::string shortcut;
+            bool checkbox = false;
+            bool checked = false;
+        };
+
+        auto addDropdownFor = [&](const char* menuName, const std::vector<MenuEntry>& items) {
             if (app.openMenu != menuName) return;
             // find the menu button x to align dropdown under it
             int mx = 4;
@@ -187,42 +221,51 @@ Layout BuildLayout(App& app) {
                 if (std::string(n) == menuName) break;
                 mx += w + 2;
             }
-            int dw = 220;
+
+            int dw = 160;
+            for (const auto& it : items) {
+                std::string prefixed = it.checkbox ? std::string("[x] ") + it.label : it.label;
+                int labelW = Font::TextWidth(prefixed, 2);
+                int shortcutW = it.shortcut.empty() ? 0 : Font::TextWidth(it.shortcut, 1);
+                int gap = it.shortcut.empty() ? 0 : 20;
+                dw = std::max(dw, labelW + gap + shortcutW + 16);
+            }
+            mx = std::min(mx, W - dw - 4);
+
             int y = layout::kMenuBarHeight;
-            for (size_t i = 0; i < items.size(); ++i) {
-                SDL_Rect r{mx, y, dw, 24};
+            for (const auto& it : items) {
                 ButtonItem b;
-                b.rect = r;
-                b.id = items[i].first;
-                b.label = items[i].second;
-                b.checkbox = isCheckbox[i];
-                b.checked = checks.size() > i && checks[i];
-                L.buttons.push_back(b);
+                b.rect = SDL_Rect{mx, y, dw, 24};
+                b.id = it.id;
+                b.label = it.label;
+                b.shortcut = it.shortcut;
+                b.checkbox = it.checkbox;
+                b.checked = it.checked;
+                L.dropdownButtons.push_back(b);
                 y += 24;
             }
         };
 
-        addDropdownFor("File",
-                        {{"menuitem:File:New", "New            Ctrl+N"},
-                         {"menuitem:File:Open", "Open           Ctrl+O"},
-                         {"menuitem:File:Save", "Save           Ctrl+S"},
-                         {"menuitem:File:SaveAs", "Save As  Ctrl+Shift+S"},
-                         {"menuitem:File:Quit", "Quit"}},
-                        {}, {false, false, false, false, false});
+        addDropdownFor("File", {
+                                    {"menuitem:File:New", "New", "Ctrl+N"},
+                                    {"menuitem:File:Open", "Open", "Ctrl+O"},
+                                    {"menuitem:File:Save", "Save", "Ctrl+S"},
+                                    {"menuitem:File:SaveAs", "Save As", "Ctrl+Shift+S"},
+                                    {"menuitem:File:Quit", "Quit", ""},
+                                });
 
-        addDropdownFor("Edit",
-                        {{"menuitem:Edit:Undo", "Undo           Ctrl+Z"},
-                         {"menuitem:Edit:Redo", "Redo           Ctrl+Y"}},
-                        {}, {false, false});
+        addDropdownFor("Edit", {
+                                    {"menuitem:Edit:Undo", "Undo", "Ctrl+Z"},
+                                    {"menuitem:Edit:Redo", "Redo", "Ctrl+Y"},
+                                });
 
-        addDropdownFor(
-            "View",
-            {{"menuitem:View:PixelGrid", "Pixel Grid          G"},
-             {"menuitem:View:Guide16", "16x16 Guide  Shift+G"},
-             {"menuitem:View:Transparency", "Transparency Grid"},
-             {"menuitem:View:ColorPanel", "Color Panel"}},
-            {app.showPixelGrid, app.show16Guide, app.showTransparencyGrid, app.colorPanelOpen_},
-            {true, true, true, true});
+        addDropdownFor("View", {
+                                    {"menuitem:View:PixelGrid", "Pixel Grid", "G", true, app.showPixelGrid},
+                                    {"menuitem:View:Guide16", "16x16 Guide", "Shift+G", true, app.show16Guide},
+                                    {"menuitem:View:Transparency", "Transparency Grid", "", true,
+                                     app.showTransparencyGrid},
+                                    {"menuitem:View:ColorPanel", "Color Panel", "", true, app.colorPanelOpen_},
+                                });
     }
 
     // ---- Toolbar ----
@@ -601,6 +644,13 @@ void DrawChrome(App& app) {
         }
     }
 
+    // Menu dropdowns (File/Edit/View) -- drawn after everything else in the
+    // chrome so they always sit on top of the toolbar/panel instead of
+    // being painted over by it.
+    for (const auto& b : L.dropdownButtons) {
+        DrawMenuItem(r, b, mx, my);
+    }
+
     // Dialogs (drawn last, on top, with a dim overlay)
     if (L.hasDialog) {
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
@@ -700,6 +750,15 @@ bool HandleMouseDown(App& app, int mx, int my, bool /*rightButton*/) {
             return true;
         }
         return true;  // swallow all clicks while modal (including on the dim overlay)
+    }
+
+    // Menu dropdown items take priority since they render on top of
+    // everything else in the chrome.
+    for (const auto& b : L.dropdownButtons) {
+        if (PointIn(b.rect, mx, my)) {
+            HandleButtonClick(app, b.id);
+            return true;
+        }
     }
 
     // Sliders (checked before generic buttons since they overlap nothing else)
