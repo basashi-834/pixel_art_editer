@@ -5,6 +5,7 @@
 #include "App.h"
 #include "I18n.h"
 #include "ImageIO.h"
+#include "Input.h"
 #include "Renderer.h"
 #include "Tools/Tool.h"
 #include "UI.h"
@@ -64,6 +65,32 @@ int RunSelfTest(App& app) {
     renderFrame();
     app.showPixelGrid = true;
     app.show16Guide = true;
+
+    // Ctrl+V into the path field, exercised through the real event queue
+    // (not just the SDL clipboard API) so this actually proves the
+    // Input::HandleKeyDown wiring works end to end.
+    {
+        app.OpenOpenDialog();
+        app.BeginEditField(FieldId::PathField, "");
+        const char* pasted = "C:\\Users\\test\\sprite.png";
+        SDL_SetClipboardText(pasted);
+
+        SDL_Event ev{};
+        ev.type = SDL_KEYDOWN;
+        ev.key.type = SDL_KEYDOWN;
+        ev.key.state = SDL_PRESSED;
+        ev.key.keysym.sym = SDLK_v;
+        ev.key.keysym.mod = KMOD_CTRL;
+        SDL_PushEvent(&ev);
+        Input::PollEvents(app);
+
+        if (app.fieldBuffer != pasted) {
+            std::cerr << "[selftest] Ctrl+V paste failed: got '" << app.fieldBuffer << "'\n";
+            return 1;
+        }
+        app.CancelActiveField();
+        app.CloseDialog();
+    }
 
     const char* outPath = std::getenv("PIXEL_EDITOR_SELFTEST_OUT");
     std::string savePath = outPath ? outPath : "/tmp/pixel_editor_selftest.png";

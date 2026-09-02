@@ -101,6 +101,30 @@ void HandleKeyDown(App& app, const SDL_KeyboardEvent& e) {
 
     if (key == SDLK_SPACE) s_spaceDown = true;
 
+    // Clipboard copy/paste/cut for the active text field (path field, New
+    // Canvas width/height, color RGBA boxes, ...). SDL does not synthesize
+    // these from clipboard actions on its own -- they have to be handled
+    // explicitly here, ahead of UI::HandleKeyDown which otherwise swallows
+    // every key while a field is focused.
+    if (app.activeField != FieldId::None && ctrl) {
+        if (key == SDLK_v) {
+            if (SDL_HasClipboardText()) {
+                char* clip = SDL_GetClipboardText();
+                if (clip) {
+                    app.fieldBuffer.clear();
+                    app.FieldTextInput(clip);
+                    SDL_free(clip);
+                }
+            }
+            return;
+        }
+        if (key == SDLK_c || key == SDLK_x) {
+            SDL_SetClipboardText(app.fieldBuffer.c_str());
+            if (key == SDLK_x) app.fieldBuffer.clear();
+            return;
+        }
+    }
+
     if (UI::HandleKeyDown(app, key)) return;  // a text field consumed it
 
     if (key == SDLK_ESCAPE) {
