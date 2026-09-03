@@ -26,6 +26,9 @@ public class SelfTest {
         ok &= check("PNG round-trip preserves exact pixels, including alpha=0", SelfTest::testPngRoundTrip);
         ok &= check("Zoom steps clamp to the documented min/max", SelfTest::testZoomClamp);
         ok &= check("NewCanvas clears history and pixels", SelfTest::testNewCanvas);
+        ok &= check("setColorChannel updates one channel without disturbing the others", SelfTest::testSetColorChannel);
+        ok &= check("removeRecentColor removes only the requested entry", SelfTest::testRemoveRecentColor);
+        ok &= check("ColorPalette add/remove ignores duplicates and missing entries", SelfTest::testColorPalette);
 
         System.out.println(ok ? "SELFTEST: ALL PASSED" : "SELFTEST: FAILURES ABOVE");
         System.exit(ok ? 0 : 1);
@@ -145,6 +148,43 @@ public class SelfTest {
         return state.getCanvas().getWidth() == 6 && state.getCanvas().getHeight() == 6
                 && !state.getHistory().canUndo() && !state.getHistory().canRedo()
                 && state.getCanvas().getPixel(0, 0) == 0;
+    }
+
+    private static boolean testSetColorChannel() {
+        EditorState state = new EditorState(4, 4);
+        state.setCurrentColorArgb((int) 0xFF102030);
+        state.setColorChannel(1, 200); // G
+        int argb = state.getCurrentColorArgb();
+        return ((argb >>> 24) & 0xFF) == 0xFF   // A unchanged
+                && ((argb >>> 16) & 0xFF) == 0x10 // R unchanged
+                && ((argb >>> 8) & 0xFF) == 200   // G updated
+                && (argb & 0xFF) == 0x30;          // B unchanged
+    }
+
+    private static boolean testRemoveRecentColor() {
+        EditorState state = new EditorState(4, 4);
+        state.setCurrentColorArgb((int) 0xFFAA0000);
+        state.setCurrentColorArgb((int) 0xFF00BB00);
+        boolean hadBoth = state.getRecentColors().contains((int) 0xFFAA0000)
+                && state.getRecentColors().contains((int) 0xFF00BB00);
+        state.removeRecentColor((int) 0xFFAA0000);
+        return hadBoth
+                && !state.getRecentColors().contains((int) 0xFFAA0000)
+                && state.getRecentColors().contains((int) 0xFF00BB00);
+    }
+
+    private static boolean testColorPalette() {
+        ColorPalette palette = new ColorPalette("テスト", false, new java.util.ArrayList<>());
+        palette.addColor(0xFF112233);
+        palette.addColor(0xFF112233); // duplicate, should not add a second entry
+        palette.addColor(0xFF445566);
+        boolean afterAdds = palette.getColors().size() == 2;
+
+        palette.removeColor(0xFF112233);
+        palette.removeColor(0xFF999999); // not present, should be a no-op
+        boolean afterRemoves = palette.getColors().size() == 1 && palette.getColors().contains(0xFF445566);
+
+        return afterAdds && afterRemoves;
     }
 
     private static boolean check(String name, BooleanSupplier test) {

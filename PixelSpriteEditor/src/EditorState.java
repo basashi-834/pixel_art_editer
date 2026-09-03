@@ -147,11 +147,20 @@ public class EditorState {
         int g = (currentColorArgb >>> 8) & 0xFF;
         int b = currentColorArgb & 0xFF;
         switch (channelIndex) {
-            case 0 -> r = value8;
-            case 1 -> g = value8;
-            case 2 -> b = value8;
-            case 3 -> a = value8;
-            default -> throw new IllegalArgumentException("channelIndex must be 0-3");
+            case 0:
+                r = value8;
+                break;
+            case 1:
+                g = value8;
+                break;
+            case 2:
+                b = value8;
+                break;
+            case 3:
+                a = value8;
+                break;
+            default:
+                throw new IllegalArgumentException("channelIndex must be 0-3");
         }
         currentColorArgb = (a << 24) | (r << 16) | (g << 8) | b;
         fireChanged();
@@ -168,6 +177,12 @@ public class EditorState {
 
     public List<Integer> getRecentColors() {
         return recentColors;
+    }
+
+    public void removeRecentColor(int argb) {
+        if (recentColors.remove((Integer) argb)) {
+            fireChanged();
+        }
     }
 
     // ---- tool -------------------------------------------------------------

@@ -22,9 +22,9 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Compile
+      - name: Compile (--release 11 enforces Java 11 source/API compatibility)
         working-directory: PixelSpriteEditor/src
-        run: javac -encoding UTF-8 *.java
+        run: javac -encoding UTF-8 --release 11 *.java
 
       - name: Self-test (model/tools/PNG I/O logic, no display needed)
         working-directory: PixelSpriteEditor/src
