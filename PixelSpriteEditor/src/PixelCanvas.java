@@ -44,10 +44,20 @@ public class PixelCanvas {
         image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
     }
 
-    /** Replaces the canvas contents with a copy of the given image (used after loading a PNG). */
+    /**
+     * Replaces the canvas contents with a copy of the given image (used after
+     * loading a PNG). Copies raw ARGB values via getRGB/setRGB rather than
+     * Graphics.drawImage(), which composites (even onto a blank destination)
+     * and can shift a semi-transparent pixel's color by +-1 per channel due
+     * to premultiplied-alpha rounding -- getRGB/setRGB is a plain value copy
+     * with no compositing math, so it's exact for every alpha value.
+     */
     public void loadFrom(BufferedImage source) {
-        BufferedImage copy = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
-        copy.getGraphics().drawImage(source, 0, 0, null);
+        int width = source.getWidth();
+        int height = source.getHeight();
+        int[] pixels = source.getRGB(0, 0, width, height, null, 0, width);
+        BufferedImage copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        copy.setRGB(0, 0, width, height, pixels, 0, width);
         image = copy;
     }
 

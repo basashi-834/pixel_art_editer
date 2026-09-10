@@ -1,3 +1,4 @@
+import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -10,16 +11,19 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
+import java.awt.image.BufferedImage;
 import javax.swing.JPanel;
 
 /**
- * Renders the sprite at the current zoom with nearest-neighbor scaling, an
- * optional checkerboard behind transparent pixels, an optional 1px pixel
- * grid, an optional 16x16 block guide, the line tool's live preview, and a
+ * Renders the active frame's composited layers at the current zoom with
+ * nearest-neighbor scaling, an optional checkerboard behind transparent
+ * pixels, an optional 1px pixel grid, an optional 16x16 block guide, an
+ * optional onion-skin of the previous frame, the line tool's live preview,
+ * a selection-rectangle outline, a floating paste preview, and a
  * hover-pixel highlight -- none of which are ever part of the saved PNG,
  * only this view. Also owns pointer input: painting (delegated to the
- * active tool), panning (middle-drag or Space+drag), and wheel-zoom
- * anchored at the cursor.
+ * active tool), panning (middle-drag or Space+drag), wheel-zoom anchored at
+ * the cursor, and paste-mode clicks (which bypass the active tool).
  */
 public class CanvasPanel extends JPanel implements MouseListener, MouseMotionListener, MouseWheelListener, KeyListener {
 
@@ -83,9 +87,11 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-            g2.drawImage(canvas.getImage(),
-                    rect.x, rect.y, rect.x + rect.width, rect.y + rect.height,
-                    0, 0, canvas.getWidth(), canvas.getHeight(), null);
+
+            if (state.isOnionSkinEnabled() && state.getPreviousFrame() != null) {
+                drawImageScaled(g2, state.getPreviousFrame().composite(), rect, 0.35f);
+            }
+            drawImageScaled(g2, state.getCompositeImage(), rect, 1.0f);
 
             if (state.isShowPixelGrid() && zoom >= 4) {
                 g2.setColor(new Color(128, 128, 128, 90));
@@ -98,12 +104,28 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
             if (state.hasPreview()) {
                 drawPreviewLine(g2, rect, zoom);
             }
+            if (state.hasSelection()) {
+                drawSelection(g2, rect, zoom);
+            }
+            if (state.isPasteModeActive()) {
+                drawPastePreview(g2, rect, zoom);
+            }
             if (hoverVisible) {
                 drawHoverHighlight(g2, rect, zoom);
             }
         } finally {
             g2.dispose();
         }
+    }
+
+    private static void drawImageScaled(Graphics2D g2, BufferedImage image, Rectangle rect, float alpha) {
+        Graphics2D gi = (Graphics2D) g2.create();
+        if (alpha < 1.0f) {
+            gi.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+        }
+        gi.drawImage(image, rect.x, rect.y, rect.x + rect.width, rect.y + rect.height,
+                0, 0, image.getWidth(), image.getHeight(), null);
+        gi.dispose();
     }
 
     private void drawCheckerboard(Graphics2D g2, Rectangle rect) {
@@ -143,6 +165,37 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
                 (px, py) -> g2.fillRect(rect.x + px * zoom, rect.y + py * zoom, zoom, zoom));
     }
 
+    private void drawSelection(Graphics2D g2, Rectangle rect, int zoom) {
+        Rectangle sel = state.getSelection();
+        int sx = rect.x + sel.x * zoom;
+        int sy = rect.y + sel.y * zoom;
+        int sw = sel.width * zoom;
+        int sh = sel.height * zoom;
+        Graphics2D gs = (Graphics2D) g2.create();
+        gs.setStroke(new java.awt.BasicStroke(1, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER,
+                1, new float[] {4, 4}, 0));
+        gs.setColor(Color.WHITE);
+        gs.drawRect(sx, sy, sw, sh);
+        gs.setColor(Color.BLACK);
+        gs.setStroke(new java.awt.BasicStroke(1, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER,
+                1, new float[] {4, 4}, 4));
+        gs.drawRect(sx, sy, sw, sh);
+        gs.dispose();
+    }
+
+    private void drawPastePreview(Graphics2D g2, Rectangle rect, int zoom) {
+        BufferedImage clip = state.getClipboardImage();
+        if (clip == null) return;
+        Rectangle pasteRect = new Rectangle(
+                rect.x + state.getPasteX() * zoom,
+                rect.y + state.getPasteY() * zoom,
+                clip.getWidth() * zoom,
+                clip.getHeight() * zoom);
+        drawImageScaled(g2, clip, pasteRect, 0.75f);
+        g2.setColor(Color.WHITE);
+        g2.drawRect(pasteRect.x, pasteRect.y, pasteRect.width, pasteRect.height);
+    }
+
     private void drawHoverHighlight(Graphics2D g2, Rectangle rect, int zoom) {
         int x0 = rect.x + hoverX * zoom;
         int y0 = rect.y + hoverY * zoom;
@@ -168,11 +221,20 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         spaceHeld = held;
     }
 
-    // ---- mouse: painting / panning ------------------------------------
+    // ---- mouse: painting / panning / pasting -------------------------------
 
     @Override
     public void mousePressed(MouseEvent e) {
         requestFocusInWindow();
+
+        if (state.isPasteModeActive()) {
+            if (e.getButton() == MouseEvent.BUTTON1) {
+                state.updatePastePosition(pixelXAt(e.getX()), pixelYAt(e.getY()));
+                state.commitPaste();
+            }
+            return;
+        }
+
         boolean middle = e.getButton() == MouseEvent.BUTTON2;
         boolean left = e.getButton() == MouseEvent.BUTTON1;
 
@@ -191,6 +253,11 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
     @Override
     public void mouseDragged(MouseEvent e) {
+        if (state.isPasteModeActive()) {
+            state.updatePastePosition(pixelXAt(e.getX()), pixelYAt(e.getY()));
+            repaint();
+            return;
+        }
         if (panning) {
             state.panBy(e.getX() - panLastX, e.getY() - panLastY);
             panLastX = e.getX();
@@ -220,6 +287,11 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
     @Override
     public void mouseMoved(MouseEvent e) {
+        if (state.isPasteModeActive()) {
+            state.updatePastePosition(pixelXAt(e.getX()), pixelYAt(e.getY()));
+            repaint();
+            return;
+        }
         updateHover(e.getX(), e.getY());
     }
 
@@ -256,12 +328,14 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         }
     }
 
-    // ---- space-to-pan ---------------------------------------------------
+    // ---- space-to-pan, escape-to-cancel-paste ------------------------------
 
     @Override
     public void keyPressed(KeyEvent e) {
         if (e.getKeyCode() == KeyEvent.VK_SPACE) {
             spaceHeld = true;
+        } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+            state.cancelPaste();
         }
     }
 

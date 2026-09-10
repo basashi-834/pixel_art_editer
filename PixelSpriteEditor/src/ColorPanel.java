@@ -39,33 +39,14 @@ public class ColorPanel extends JPanel {
     private static final int SWATCH_SIZE = 18;
     private static final String[] CHANNEL_NAMES = {"R", "G", "B", "A"};
 
-    /** Seed colors for the built-in palette: 15 colors + transparent = 16. */
-    private static final int[] DEFAULT_PALETTE_COLORS = {
-        0x00000000, // transparent
-        0xFF000000, // black
-        0xFF555555, // dark gray
-        0xFFAAAAAA, // light gray
-        0xFFFFFFFF, // white
-        0xFFE63946, // red
-        0xFFF4A261, // orange
-        0xFFFFD166, // yellow
-        0xFF2A9D8F, // teal green
-        0xFF1B4332, // dark green
-        0xFF4CC9F0, // cyan
-        0xFF1D3557, // navy blue
-        0xFF7B2CBF, // purple
-        0xFFF72585, // pink
-        0xFF6F4518, // brown
-        0xFFE0AC69, // skin tone
-    };
-
     private final EditorState state;
     private final JPanel swatch;
     private final JSlider[] sliders = new JSlider[4];
     private final JSpinner[] spinners = new JSpinner[4];
     private final JPanel recentRow;
 
-    private final List<ColorPalette> palettes = new ArrayList<>();
+    // Palettes themselves live in EditorState (so ProjectIO can save/load them);
+    // this panel only owns the combo box/grid widgets that display them.
     private JComboBox<ColorPalette> paletteCombo;
     private JPanel paletteGrid;
     private JButton deletePaletteBtn;
@@ -75,10 +56,6 @@ public class ColorPanel extends JPanel {
 
     public ColorPanel(EditorState state) {
         this.state = state;
-
-        List<Integer> defaultColors = new ArrayList<>();
-        for (int c : DEFAULT_PALETTE_COLORS) defaultColors.add(c);
-        palettes.add(new ColorPalette("デフォルト", true, defaultColors));
 
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -210,7 +187,7 @@ public class ColorPanel extends JPanel {
 
         paletteCombo = new JComboBox<>();
         paletteCombo.setPreferredSize(new Dimension(100, 22));
-        for (ColorPalette p : palettes) paletteCombo.addItem(p);
+        for (ColorPalette p : state.getPalettes()) paletteCombo.addItem(p);
         paletteCombo.addActionListener(e -> refreshPaletteGrid());
         header.add(paletteCombo);
 
@@ -244,7 +221,7 @@ public class ColorPanel extends JPanel {
         if (name.isEmpty()) return;
 
         ColorPalette palette = new ColorPalette(name, false, new ArrayList<>());
-        palettes.add(palette);
+        state.addPalette(palette);
         paletteCombo.addItem(palette);
         paletteCombo.setSelectedItem(palette);
     }
@@ -256,7 +233,7 @@ public class ColorPanel extends JPanel {
                 "パレット「" + selected.getName() + "」を削除しますか？", "確認", JOptionPane.YES_NO_OPTION);
         if (confirm != JOptionPane.YES_OPTION) return;
 
-        palettes.remove(selected);
+        state.removePalette(selected);
         paletteCombo.removeItem(selected);
         paletteCombo.setSelectedIndex(0);
     }
@@ -329,7 +306,22 @@ public class ColorPanel extends JPanel {
         return sw;
     }
 
+    /** Rebuilds the combo box only if EditorState's palette list actually changed underneath us (e.g. a project load) -- otherwise every unrelated state change (picking a color, drawing a pixel) would reset the dropdown's selection. */
+    private void syncPaletteCombo() {
+        List<ColorPalette> current = state.getPalettes();
+        boolean same = paletteCombo.getItemCount() == current.size();
+        for (int i = 0; same && i < current.size(); i++) {
+            same = paletteCombo.getItemAt(i) == current.get(i);
+        }
+        if (same) return;
+
+        paletteCombo.removeAllItems();
+        for (ColorPalette p : current) paletteCombo.addItem(p);
+        if (paletteCombo.getItemCount() > 0) paletteCombo.setSelectedIndex(0);
+    }
+
     private void refresh() {
+        syncPaletteCombo();
         updating = true;
         int argb = state.getCurrentColorArgb();
         int[] channels = {
@@ -351,5 +343,7 @@ public class ColorPanel extends JPanel {
         }
         recentRow.revalidate();
         recentRow.repaint();
+
+        refreshPaletteGrid();
     }
 }

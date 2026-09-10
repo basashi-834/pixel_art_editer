@@ -1,3 +1,4 @@
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -5,10 +6,18 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The app's central mutable state: canvas, history, current tool/color,
- * view flags, camera. Owns no Swing components -- EditorWindow/CanvasPanel
- * read from and react to it, so the model stays testable and reusable
- * independent of the UI.
+ * The app's central mutable state: frames (each a stack of layers), the
+ * active frame/layer, current tool/color, selection/clipboard, view flags,
+ * camera. Owns no Swing components -- EditorWindow/CanvasPanel read from
+ * and react to it, so the model stays testable and reusable independent of
+ * the UI.
+ *
+ * Undo/redo is per-layer (each Layer has its own History): painting always
+ * targets the active layer's canvas, so switching layers or frames doesn't
+ * mix up what Ctrl+Z affects. Structural edits -- adding/removing a frame
+ * or layer -- are NOT undoable; only pixel edits are (which does cover
+ * Flip and Paste, since both go through beginStroke/paintPixel/endStroke
+ * like any other tool).
  *
  * Two different update paths are used on purpose:
  *  - fireChanged() (via endStroke/undo/redo/newCanvas/etc) notifies
@@ -20,15 +29,35 @@ import java.util.Map;
  */
 public class EditorState {
 
-    public enum ToolType { PENCIL, ERASER, FILL, EYEDROPPER, LINE }
+    public enum ToolType { PENCIL, ERASER, FILL, EYEDROPPER, LINE, SELECT }
 
     public static final int[] ZOOM_STEPS = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32};
 
-    private PixelCanvas canvas;
-    private final History history = new History();
+    private static final int[] DEFAULT_PALETTE_COLORS = {
+        0x00000000, // transparent
+        0xFF000000, // black
+        0xFF555555, // dark gray
+        0xFFAAAAAA, // light gray
+        0xFFFFFFFF, // white
+        0xFFE63946, // red
+        0xFFF4A261, // orange
+        0xFFFFD166, // yellow
+        0xFF2A9D8F, // teal green
+        0xFF1B4332, // dark green
+        0xFF4CC9F0, // cyan
+        0xFF1D3557, // navy blue
+        0xFF7B2CBF, // purple
+        0xFFF72585, // pink
+        0xFF6F4518, // brown
+        0xFFE0AC69, // skin tone
+    };
+
+    private final List<Frame> frames = new ArrayList<>();
+    private int activeFrameIndex;
 
     private int currentColorArgb = 0xFF000000; // opaque black
     private final List<Integer> recentColors = new ArrayList<>();
+    private final List<ColorPalette> palettes = new ArrayList<>();
 
     private ToolType currentToolType = ToolType.PENCIL;
     private final Map<ToolType, Tool> tools = new EnumMap<>(ToolType.class);
@@ -36,27 +65,42 @@ public class EditorState {
     private boolean showPixelGrid = true;
     private boolean show16Guide = true;
     private boolean showTransparencyChecker = true;
+    private boolean onionSkinEnabled = false;
 
     private int zoom = 8;
     private double camOffsetX;
     private double camOffsetY;
 
-    private String currentFilePath;
+    private String currentFilePath;    // last PNG (single-frame) export/import path
+    private String currentProjectPath; // last .pxproj project file path
 
     private boolean previewActive;
     private int previewX0, previewY0, previewX1, previewY1;
 
+    private Rectangle selection; // pixel-space, active frame/layer; null = none
+
+    private BufferedImage clipboardImage;
+    private boolean pasteModeActive;
+    private int pasteX, pasteY;
+
     private final List<Runnable> listeners = new ArrayList<>();
 
     public EditorState(int width, int height) {
-        canvas = new PixelCanvas(width, height);
+        frames.add(new Frame(width, height));
+
         tools.put(ToolType.PENCIL, new PencilTool());
         tools.put(ToolType.ERASER, new EraserTool());
         tools.put(ToolType.FILL, new FillTool());
         tools.put(ToolType.EYEDROPPER, new EyedropperTool());
         tools.put(ToolType.LINE, new LineTool());
+        tools.put(ToolType.SELECT, new SelectionTool());
+
         recentColors.add(0xFF000000);
         recentColors.add(0xFFFFFFFF);
+
+        List<Integer> defaultColors = new ArrayList<>();
+        for (int c : DEFAULT_PALETTE_COLORS) defaultColors.add(c);
+        palettes.add(new ColorPalette("デフォルト", true, defaultColors));
     }
 
     // ---- listeners ----------------------------------------------------
@@ -69,53 +113,191 @@ public class EditorState {
         for (Runnable r : listeners) r.run();
     }
 
-    // ---- canvas / history ----------------------------------------------
+    // ---- frames -----------------------------------------------------------
+
+    public List<Frame> getFrames() {
+        return frames;
+    }
+
+    public int getActiveFrameIndex() {
+        return activeFrameIndex;
+    }
+
+    public Frame getActiveFrame() {
+        return frames.get(activeFrameIndex);
+    }
+
+    public void setActiveFrameIndex(int index) {
+        activeFrameIndex = Math.max(0, Math.min(frames.size() - 1, index));
+        selection = null;
+        pasteModeActive = false;
+        fireChanged();
+    }
+
+    public void addFrame() {
+        Frame reference = getActiveFrame();
+        frames.add(activeFrameIndex + 1, new Frame(reference.getWidth(), reference.getHeight()));
+        activeFrameIndex++;
+        selection = null;
+        fireChanged();
+    }
+
+    public void duplicateFrame() {
+        frames.add(activeFrameIndex + 1, getActiveFrame().duplicate());
+        activeFrameIndex++;
+        selection = null;
+        fireChanged();
+    }
+
+    /** No-op if this is the only frame -- there's always at least one. */
+    public void removeFrame() {
+        if (frames.size() <= 1) return;
+        frames.remove(activeFrameIndex);
+        activeFrameIndex = Math.max(0, Math.min(frames.size() - 1, activeFrameIndex));
+        selection = null;
+        fireChanged();
+    }
+
+    public void moveFrame(int from, int to) {
+        if (to < 0 || to >= frames.size()) return;
+        Frame frame = frames.remove(from);
+        frames.add(to, frame);
+        activeFrameIndex = to;
+        fireChanged();
+    }
+
+    /** The frame just before the active one, or null if the active frame is first -- used for onion skin. */
+    public Frame getPreviousFrame() {
+        return activeFrameIndex > 0 ? frames.get(activeFrameIndex - 1) : null;
+    }
+
+    // ---- layers (of the active frame) --------------------------------------
+
+    public List<Layer> getLayers() {
+        return getActiveFrame().getLayers();
+    }
+
+    public int getActiveLayerIndex() {
+        return getActiveFrame().getActiveLayerIndex();
+    }
+
+    public void setActiveLayerIndex(int index) {
+        getActiveFrame().setActiveLayerIndex(index);
+        fireChanged();
+    }
+
+    public Layer getActiveLayer() {
+        return getActiveFrame().getActiveLayer();
+    }
+
+    public void addLayer() {
+        getActiveFrame().addLayer();
+        fireChanged();
+    }
+
+    public void duplicateLayer(int index) {
+        getActiveFrame().duplicateLayer(index);
+        fireChanged();
+    }
+
+    public void removeLayer(int index) {
+        getActiveFrame().removeLayer(index);
+        fireChanged();
+    }
+
+    public void moveLayer(int from, int to) {
+        getActiveFrame().moveLayer(from, to);
+        fireChanged();
+    }
+
+    public void setLayerVisible(int index, boolean visible) {
+        getLayers().get(index).setVisible(visible);
+        fireChanged();
+    }
+
+    public void renameLayer(int index, String name) {
+        getLayers().get(index).setName(name);
+        fireChanged();
+    }
+
+    /** Every visible layer of the active frame, flattened into one image -- what's actually displayed/exported. */
+    public BufferedImage getCompositeImage() {
+        return getActiveFrame().composite();
+    }
+
+    // ---- canvas / history (of the active layer) --------------------------
 
     public PixelCanvas getCanvas() {
-        return canvas;
+        return getActiveLayer().getCanvas();
     }
 
     public History getHistory() {
-        return history;
+        return getActiveLayer().getHistory();
     }
 
     public void paintPixel(int x, int y, int argb) {
+        PixelCanvas canvas = getCanvas();
         int before = canvas.getPixel(x, y);
         if (canvas.setPixel(x, y, argb)) {
-            history.recordChange(x, y, before, argb);
+            getHistory().recordChange(x, y, before, argb);
         }
     }
 
     public void beginStroke() {
-        history.beginStroke();
+        getHistory().beginStroke();
     }
 
     public void endStroke() {
-        history.endStroke();
+        getHistory().endStroke();
         fireChanged();
     }
 
     public void undo() {
-        history.undo(canvas);
+        getHistory().undo(getCanvas());
         fireChanged();
     }
 
     public void redo() {
-        history.redo(canvas);
+        getHistory().redo(getCanvas());
         fireChanged();
     }
 
     public void newCanvas(int width, int height) {
-        canvas.reset(width, height);
-        history.clear();
+        frames.clear();
+        frames.add(new Frame(width, height));
+        activeFrameIndex = 0;
         currentFilePath = null;
+        currentProjectPath = null;
+        selection = null;
+        pasteModeActive = false;
         fireChanged();
     }
 
+    /** Imports a plain PNG as a fresh single-frame, single-layer project. */
     public void loadFrom(BufferedImage image, String path) {
-        canvas.loadFrom(image);
-        history.clear();
+        frames.clear();
+        Frame frame = new Frame(image.getWidth(), image.getHeight());
+        frame.getActiveLayer().getCanvas().loadFrom(image);
+        frames.add(frame);
+        activeFrameIndex = 0;
         currentFilePath = path;
+        currentProjectPath = null;
+        selection = null;
+        pasteModeActive = false;
+        fireChanged();
+    }
+
+    /** For ProjectIO after loading a .pxproj: replaces the whole project (frames, layers, custom palettes). */
+    public void replaceProject(List<Frame> newFrames, List<ColorPalette> customPalettes, String path) {
+        frames.clear();
+        frames.addAll(newFrames);
+        activeFrameIndex = 0;
+        palettes.removeIf(p -> !p.isBuiltIn());
+        palettes.addAll(customPalettes);
+        currentProjectPath = path;
+        currentFilePath = null;
+        selection = null;
+        pasteModeActive = false;
         fireChanged();
     }
 
@@ -126,6 +308,166 @@ public class EditorState {
 
     public String getCurrentFilePath() {
         return currentFilePath;
+    }
+
+    public String getCurrentProjectPath() {
+        return currentProjectPath;
+    }
+
+    public void setCurrentProjectPath(String path) {
+        currentProjectPath = path;
+        fireChanged();
+    }
+
+    // ---- selection --------------------------------------------------------
+
+    public void setSelection(Rectangle rect) {
+        selection = rect;
+        fireChanged();
+    }
+
+    public Rectangle getSelection() {
+        return selection;
+    }
+
+    public boolean hasSelection() {
+        return selection != null;
+    }
+
+    public void clearSelection() {
+        selection = null;
+        fireChanged();
+    }
+
+    /** Fills the selection with fully transparent pixels, as one undo step. No-op with no selection. */
+    public void deleteSelection() {
+        if (selection == null) return;
+        beginStroke();
+        for (int dy = 0; dy < selection.height; dy++) {
+            for (int dx = 0; dx < selection.width; dx++) {
+                paintPixel(selection.x + dx, selection.y + dy, 0);
+            }
+        }
+        endStroke();
+    }
+
+    // ---- clipboard / paste --------------------------------------------------
+
+    /** Copies the selected pixels from the active layer into the clipboard. No-op with no selection. */
+    public void copySelection() {
+        if (selection == null) return;
+        PixelCanvas canvas = getCanvas();
+        BufferedImage copy = new BufferedImage(selection.width, selection.height, BufferedImage.TYPE_INT_ARGB);
+        for (int dy = 0; dy < selection.height; dy++) {
+            for (int dx = 0; dx < selection.width; dx++) {
+                copy.setRGB(dx, dy, canvas.getPixel(selection.x + dx, selection.y + dy));
+            }
+        }
+        clipboardImage = copy;
+        fireChanged();
+    }
+
+    public void cutSelection() {
+        copySelection();
+        deleteSelection();
+    }
+
+    public boolean hasClipboard() {
+        return clipboardImage != null;
+    }
+
+    public BufferedImage getClipboardImage() {
+        return clipboardImage;
+    }
+
+    /** Enters "floating paste" mode: the clipboard image follows the cursor until a click commits it (or Esc cancels). */
+    public void beginPaste() {
+        if (clipboardImage == null) return;
+        pasteModeActive = true;
+        pasteX = selection != null ? selection.x : 0;
+        pasteY = selection != null ? selection.y : 0;
+        fireChanged();
+    }
+
+    public boolean isPasteModeActive() {
+        return pasteModeActive;
+    }
+
+    /** Moves the floating paste without firing listeners -- CanvasPanel repaints itself directly while dragging. */
+    public void updatePastePosition(int x, int y) {
+        pasteX = x;
+        pasteY = y;
+    }
+
+    public int getPasteX() {
+        return pasteX;
+    }
+
+    public int getPasteY() {
+        return pasteY;
+    }
+
+    /** Stamps the clipboard onto the active layer at the current paste position, as one undo step. */
+    public void commitPaste() {
+        if (!pasteModeActive || clipboardImage == null) return;
+        beginStroke();
+        int w = clipboardImage.getWidth();
+        int h = clipboardImage.getHeight();
+        for (int dy = 0; dy < h; dy++) {
+            for (int dx = 0; dx < w; dx++) {
+                paintPixel(pasteX + dx, pasteY + dy, clipboardImage.getRGB(dx, dy));
+            }
+        }
+        endStroke();
+        pasteModeActive = false;
+        fireChanged();
+    }
+
+    public void cancelPaste() {
+        if (!pasteModeActive) return;
+        pasteModeActive = false;
+        fireChanged();
+    }
+
+    // ---- flip (selection if present, else the whole active layer) -----------
+
+    public void flipHorizontal() {
+        flip(true);
+    }
+
+    public void flipVertical() {
+        flip(false);
+    }
+
+    private void flip(boolean horizontal) {
+        Rectangle r = selection != null ? selection : new Rectangle(0, 0, getCanvas().getWidth(), getCanvas().getHeight());
+        PixelCanvas canvas = getCanvas();
+        int[][] snapshot = new int[r.width][r.height];
+        for (int dx = 0; dx < r.width; dx++) {
+            for (int dy = 0; dy < r.height; dy++) {
+                snapshot[dx][dy] = canvas.getPixel(r.x + dx, r.y + dy);
+            }
+        }
+        beginStroke();
+        for (int dx = 0; dx < r.width; dx++) {
+            for (int dy = 0; dy < r.height; dy++) {
+                int destDx = horizontal ? (r.width - 1 - dx) : dx;
+                int destDy = horizontal ? dy : (r.height - 1 - dy);
+                paintPixel(r.x + destDx, r.y + destDy, snapshot[dx][dy]);
+            }
+        }
+        endStroke();
+    }
+
+    // ---- onion skin ---------------------------------------------------------
+
+    public boolean isOnionSkinEnabled() {
+        return onionSkinEnabled;
+    }
+
+    public void setOnionSkinEnabled(boolean v) {
+        onionSkinEnabled = v;
+        fireChanged();
     }
 
     // ---- color ----------------------------------------------------------
@@ -183,6 +525,23 @@ public class EditorState {
         if (recentColors.remove((Integer) argb)) {
             fireChanged();
         }
+    }
+
+    // ---- palettes -----------------------------------------------------------
+
+    public List<ColorPalette> getPalettes() {
+        return palettes;
+    }
+
+    public void addPalette(ColorPalette palette) {
+        palettes.add(palette);
+        fireChanged();
+    }
+
+    public void removePalette(ColorPalette palette) {
+        if (palette.isBuiltIn()) return;
+        palettes.remove(palette);
+        fireChanged();
     }
 
     // ---- tool -------------------------------------------------------------
@@ -287,8 +646,8 @@ public class EditorState {
             camOffsetY = 0;
             return;
         }
-        camOffsetX = (viewportWidth - canvas.getWidth() * zoom) / 2.0;
-        camOffsetY = (viewportHeight - canvas.getHeight() * zoom) / 2.0;
+        camOffsetX = (viewportWidth - getCanvas().getWidth() * zoom) / 2.0;
+        camOffsetY = (viewportHeight - getCanvas().getHeight() * zoom) / 2.0;
     }
 
     // ---- line-tool preview (drawn by CanvasPanel, never touches the canvas) ---

@@ -29,6 +29,12 @@ public class SelfTest {
         ok &= check("setColorChannel updates one channel without disturbing the others", SelfTest::testSetColorChannel);
         ok &= check("removeRecentColor removes only the requested entry", SelfTest::testRemoveRecentColor);
         ok &= check("ColorPalette add/remove ignores duplicates and missing entries", SelfTest::testColorPalette);
+        ok &= check("Frames: add/duplicate/remove and undo stays per-layer", SelfTest::testFrames);
+        ok &= check("Layers: add/visibility/composite order and per-layer undo", SelfTest::testLayers);
+        ok &= check("Selection + copy/paste stamps the clipboard as one undo step", SelfTest::testSelectionCopyPaste);
+        ok &= check("Flip horizontal mirrors within the selection only", SelfTest::testFlipHorizontal);
+        ok &= check("Flip vertical mirrors the whole canvas with no selection", SelfTest::testFlipVertical);
+        ok &= check("Project save/load round-trips frames, layers and a custom palette", SelfTest::testProjectRoundTrip);
 
         System.out.println(ok ? "SELFTEST: ALL PASSED" : "SELFTEST: FAILURES ABOVE");
         System.exit(ok ? 0 : 1);
@@ -185,6 +191,164 @@ public class SelfTest {
         boolean afterRemoves = palette.getColors().size() == 1 && palette.getColors().contains(0xFF445566);
 
         return afterAdds && afterRemoves;
+    }
+
+    private static boolean testFrames() {
+        EditorState state = new EditorState(4, 4);
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        boolean frame1HasPixel = state.getCanvas().getPixel(0, 0) == (int) 0xFFFF0000;
+
+        state.addFrame();
+        boolean newFrameIsBlank = state.getCanvas().getPixel(0, 0) == 0;
+        boolean twoFrames = state.getFrames().size() == 2;
+
+        state.setActiveFrameIndex(0);
+        boolean firstFrameUnaffected = state.getCanvas().getPixel(0, 0) == (int) 0xFFFF0000;
+
+        state.duplicateFrame();
+        boolean dupHasSameContent = state.getCanvas().getPixel(0, 0) == (int) 0xFFFF0000;
+        boolean threeFrames = state.getFrames().size() == 3;
+
+        state.removeFrame();
+        boolean removedOk = state.getFrames().size() == 2;
+
+        return frame1HasPixel && newFrameIsBlank && twoFrames && firstFrameUnaffected
+                && dupHasSameContent && threeFrames && removedOk;
+    }
+
+    private static boolean testLayers() {
+        EditorState state = new EditorState(4, 4);
+        state.paintPixel(1, 1, (int) 0xFFFF0000);
+        state.addLayer();
+        boolean newLayerActive = state.getActiveLayerIndex() == 1;
+        state.beginStroke(); // paintPixel alone doesn't commit to the undo stack -- only endStroke() does
+        state.paintPixel(1, 1, (int) 0xFF0000FF);
+        state.endStroke();
+
+        boolean topLayerWinsComposite = state.getCompositeImage().getRGB(1, 1) == (int) 0xFF0000FF;
+
+        state.undo(); // undo only touches the active (top) layer
+        boolean topLayerPixelUndone = state.getCanvas().getPixel(1, 1) == 0;
+        state.setActiveLayerIndex(0);
+        boolean bottomLayerUnaffectedByTopUndo = state.getCanvas().getPixel(1, 1) == (int) 0xFFFF0000;
+
+        state.setLayerVisible(0, false);
+        boolean hiddenLayerExcluded = (state.getCompositeImage().getRGB(1, 1) >>> 24) == 0;
+
+        state.setLayerVisible(0, true);
+        state.setActiveLayerIndex(1);
+        state.removeLayer(1);
+        boolean removedBackToOneLayer = state.getLayers().size() == 1;
+
+        return newLayerActive && topLayerWinsComposite && topLayerPixelUndone
+                && bottomLayerUnaffectedByTopUndo && hiddenLayerExcluded && removedBackToOneLayer;
+    }
+
+    private static boolean testSelectionCopyPaste() {
+        EditorState state = new EditorState(6, 6);
+        state.paintPixel(1, 1, (int) 0xFFFF0000);
+        state.paintPixel(2, 1, (int) 0xFF00FF00);
+
+        state.setSelection(new java.awt.Rectangle(1, 1, 2, 1));
+        state.copySelection();
+        boolean hasClipboard = state.hasClipboard();
+        boolean clipboardMatches = state.getClipboardImage().getRGB(0, 0) == (int) 0xFFFF0000
+                && state.getClipboardImage().getRGB(1, 0) == (int) 0xFF00FF00;
+
+        state.beginPaste();
+        boolean pasteModeOn = state.isPasteModeActive();
+        state.updatePastePosition(3, 3);
+        state.commitPaste();
+        boolean pasteModeOffAfterCommit = !state.isPasteModeActive();
+        boolean stampedAtNewLocation = state.getCanvas().getPixel(3, 3) == (int) 0xFFFF0000
+                && state.getCanvas().getPixel(4, 3) == (int) 0xFF00FF00;
+
+        boolean pasteIsOneUndoStep = state.getHistory().canUndo();
+        state.undo();
+        boolean undonePasteClearsBoth = state.getCanvas().getPixel(3, 3) == 0 && state.getCanvas().getPixel(4, 3) == 0;
+
+        return hasClipboard && clipboardMatches && pasteModeOn && pasteModeOffAfterCommit
+                && stampedAtNewLocation && pasteIsOneUndoStep && undonePasteClearsBoth;
+    }
+
+    private static boolean testFlipHorizontal() {
+        EditorState state = new EditorState(4, 4);
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        state.paintPixel(1, 0, (int) 0xFF00FF00);
+        state.paintPixel(3, 3, (int) 0xFF123456); // outside the selection, must stay untouched
+
+        state.setSelection(new java.awt.Rectangle(0, 0, 2, 1));
+        state.flipHorizontal();
+
+        boolean swappedWithinSelection = state.getCanvas().getPixel(0, 0) == (int) 0xFF00FF00
+                && state.getCanvas().getPixel(1, 0) == (int) 0xFFFF0000;
+        boolean outsideSelectionUntouched = state.getCanvas().getPixel(3, 3) == (int) 0xFF123456;
+        boolean flipIsUndoable = state.getHistory().canUndo();
+
+        return swappedWithinSelection && outsideSelectionUntouched && flipIsUndoable;
+    }
+
+    private static boolean testFlipVertical() {
+        EditorState state = new EditorState(2, 4);
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        state.paintPixel(0, 3, (int) 0xFF00FF00);
+
+        state.flipVertical(); // no selection -> flips the whole canvas
+
+        return state.getCanvas().getPixel(0, 0) == (int) 0xFF00FF00
+                && state.getCanvas().getPixel(0, 3) == (int) 0xFFFF0000;
+    }
+
+    private static boolean testProjectRoundTrip() {
+        EditorState state = new EditorState(3, 2);
+        state.paintPixel(0, 0, (int) 0xFFAABBCC);
+        state.addLayer();
+        state.getActiveLayer().setName("上のレイヤー");
+        state.paintPixel(1, 1, 0x80112233);
+        state.setLayerVisible(1, false);
+
+        state.addFrame();
+        state.paintPixel(2, 0, (int) 0xFF445566);
+
+        java.util.List<Integer> colors = new java.util.ArrayList<>();
+        colors.add((int) 0xFF010203);
+        state.addPalette(new ColorPalette("テストパレット", false, colors));
+
+        File tmp = null;
+        try {
+            tmp = File.createTempFile("pse-selftest-project-", ".pxproj");
+            ProjectIO.save(state, tmp);
+
+            EditorState loaded = new EditorState(1, 1); // overwritten wholesale by replaceProject()
+            ProjectIO.load(loaded, tmp);
+
+            boolean frameCountOk = loaded.getFrames().size() == 2;
+            loaded.setActiveFrameIndex(0);
+            boolean frame0LayerCountOk = loaded.getLayers().size() == 2;
+            boolean layerNameOk = loaded.getLayers().get(1).getName().equals("上のレイヤー");
+            boolean layerVisibilityOk = !loaded.getLayers().get(1).isVisible();
+            loaded.setActiveLayerIndex(0);
+            boolean bottomPixelOk = loaded.getCanvas().getPixel(0, 0) == (int) 0xFFAABBCC;
+            loaded.setActiveLayerIndex(1);
+            boolean topPixelOk = loaded.getCanvas().getPixel(1, 1) == 0x80112233;
+
+            loaded.setActiveFrameIndex(1);
+            boolean frame1PixelOk = loaded.getCanvas().getPixel(2, 0) == (int) 0xFF445566;
+
+            boolean paletteRoundTripOk = false;
+            for (ColorPalette p : loaded.getPalettes()) {
+                if (!p.isBuiltIn() && "テストパレット".equals(p.getName()) && p.getColors().contains(0xFF010203)) {
+                    paletteRoundTripOk = true;
+                }
+            }
+
+            return frameCountOk && frame0LayerCountOk && layerNameOk && layerVisibilityOk
+                    && bottomPixelOk && topPixelOk && frame1PixelOk && paletteRoundTripOk;
+        } catch (IOException e) {
+            return false;
+        } finally {
+            if (tmp != null) tmp.delete();
+        }
     }
 
     private static boolean check(String name, BooleanSupplier test) {
