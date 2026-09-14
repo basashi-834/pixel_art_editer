@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pixel Sprite Editor (Web)</title>
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="menu-bar">
+      <div class="dropdown">
+        <button id="btn-menu-file" type="button">File ▾</button>
+        <div id="menu-file" class="dropdown-menu">
+          <button type="button" id="action-new">新規<span class="shortcut">Ctrl+N</span></button>
+          <button type="button" id="action-open-png">開く (PNG)<span class="shortcut">Ctrl+O</span></button>
+          <button type="button" id="action-open-project">プロジェクトを開く...</button>
+          <hr>
+          <button type="button" id="action-save-png">保存 (PNG)<span class="shortcut">Ctrl+S</span></button>
+          <button type="button" id="action-save-project">プロジェクトを保存</button>
+          <hr>
+          <button type="button" id="action-resize-canvas">キャンバスをリサイズ...</button>
+          <button type="button" id="action-export-sheet">スプライトシートとして書き出し...</button>
+        </div>
+      </div>
+      <div class="dropdown">
+        <button id="btn-menu-edit" type="button">Edit ▾</button>
+        <div id="menu-edit" class="dropdown-menu">
+          <button type="button" id="action-undo">元に戻す<span class="shortcut">Ctrl+Z</span></button>
+          <button type="button" id="action-redo">やり直し<span class="shortcut">Ctrl+Y</span></button>
+          <hr>
+          <button type="button" id="action-copy">コピー<span class="shortcut">Ctrl+C</span></button>
+          <button type="button" id="action-cut">切り取り<span class="shortcut">Ctrl+X</span></button>
+          <button type="button" id="action-paste">貼り付け<span class="shortcut">Ctrl+V</span></button>
+          <button type="button" id="action-delete-selection">選択範囲を削除<span class="shortcut">Del</span></button>
+          <button type="button" id="action-fill-selection">選択範囲を塗りつぶし</button>
+          <hr>
+          <button type="button" id="action-flip-h">左右反転</button>
+          <button type="button" id="action-flip-v">上下反転</button>
+          <hr>
+          <button type="button" id="action-select-all">全て選択<span class="shortcut">Ctrl+A</span></button>
+          <button type="button" id="action-deselect">選択解除</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toolbar">
+      <button type="button" data-tool="pencil" title="鉛筆">✏️</button>
+      <button type="button" data-tool="eraser" title="消しゴム">🧹</button>
+      <button type="button" data-tool="fill" title="塗りつぶし">🪣</button>
+      <button type="button" data-tool="eyedropper" title="スポイト">💧</button>
+      <button type="button" data-tool="line" title="直線">📏</button>
+      <button type="button" data-tool="select" title="選択">▭</button>
+    </div>
+  </header>
+
+  <div id="main-area">
+    <aside id="color-panel" class="side-panel">
+      <button type="button" class="panel-close" data-close-panel>×</button>
+      <h4>色</h4>
+      <div id="color-preview"></div>
+      <div class="slider-row">
+        <label>R</label><input type="range" id="slider-r" min="0" max="255" value="0"><input type="number" id="num-r" min="0" max="255" value="0">
+      </div>
+      <div class="slider-row">
+        <label>G</label><input type="range" id="slider-g" min="0" max="255" value="0"><input type="number" id="num-g" min="0" max="255" value="0">
+      </div>
+      <div class="slider-row">
+        <label>B</label><input type="range" id="slider-b" min="0" max="255" value="0"><input type="number" id="num-b" min="0" max="255" value="0">
+      </div>
+      <div class="slider-row">
+        <label>A</label><input type="range" id="slider-a" min="0" max="255" value="255"><input type="number" id="num-a" min="0" max="255" value="255">
+      </div>
+
+      <h4>パレット</h4>
+      <div class="palette-controls">
+        <select id="palette-select"></select>
+        <button type="button" id="btn-palette-new" title="新規パレット">+新規</button>
+        <button type="button" id="btn-palette-delete" title="パレットを削除">削除</button>
+      </div>
+      <div id="palette-colors" class="swatch-grid"></div>
+      <button type="button" id="btn-add-current-to-palette">現在の色をパレットに追加</button>
+
+      <h4>最近使った色</h4>
+      <div id="recent-colors" class="swatch-grid"></div>
+    </aside>
+
+    <div id="canvas-area">
+      <canvas id="main-canvas"></canvas>
+    </div>
+
+    <aside id="layers-panel" class="side-panel">
+      <button type="button" class="panel-close" data-close-panel>×</button>
+      <h4>レイヤー</h4>
+      <div id="layers-list" class="layers-list"></div>
+      <div class="panel-buttons">
+        <button type="button" id="btn-layer-add">+追加</button>
+        <button type="button" id="btn-layer-duplicate">複製</button>
+        <button type="button" id="btn-layer-delete">削除</button>
+        <button type="button" id="btn-layer-up">↑</button>
+        <button type="button" id="btn-layer-down">↓</button>
+      </div>
+    </aside>
+  </div>
+
+  <footer id="frames-panel">
+    <button type="button" class="panel-close" data-close-panel>×</button>
+    <div class="frames-toolbar">
+      <button type="button" id="btn-frame-add">+追加</button>
+      <button type="button" id="btn-frame-duplicate">複製</button>
+      <button type="button" id="btn-frame-delete">削除</button>
+      <button type="button" id="btn-frame-left">←</button>
+      <button type="button" id="btn-frame-right">→</button>
+      <button type="button" id="btn-frame-play">▶ 再生</button>
+      <label class="onion-toggle"><input type="checkbox" id="chk-onion-skin"> オニオンスキン</label>
+    </div>
+    <div id="frames-list"></div>
+  </footer>
+
+  <div id="status-bar">
+    <span id="status-coords"></span>
+    <span id="status-zoom"></span>
+  </div>
+
+  <nav id="mobile-panel-tabs">
+    <button type="button" data-panel="colors">色</button>
+    <button type="button" data-panel="layers">レイヤー</button>
+    <button type="button" data-panel="frames">フレーム</button>
+  </nav>
+  <div id="mobile-backdrop"></div>
+</div>
+
+<script src="src/lineUtil.js"></script>
+<script src="src/history.js"></script>
+<script src="src/project.js"></script>
+<script src="src/state.js"></script>
+<script src="src/tools.js"></script>
+<script src="src/canvasPanel.js"></script>
+<script src="src/colorPanel.js"></script>
+<script src="src/layersPanel.js"></script>
+<script src="src/framesPanel.js"></script>
+<script src="src/dialogs.js"></script>
+<script src="src/fileio.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

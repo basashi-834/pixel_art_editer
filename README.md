@@ -1,17 +1,30 @@
 # Pixel Sprite Editor
 
 90年代の対戦格闘ゲーム（ストリートファイターII風）のキャラクタースプライトを
-描くためのドット絵エディタです。このリポジトリでは同じアプリを3つの技術で
-作り直してきました。**現在の実装は Java（Swing）版**です。
+描くためのドット絵エディタです。このリポジトリでは同じアプリを複数の技術で
+作り直してきました。**デスクトップ向けの現在の実装は Java（Swing）版**、
+**スマートフォン（iPhone等）のブラウザでも動く実装として Web版**を並行して
+提供しています。
 
-## 現在の実装: [`PixelSpriteEditor/`](PixelSpriteEditor/README.md)（Java / Swing）
+## 現在の実装
 
-JDK標準ライブラリのみで実装。外部ライブラリ・ビルドツール不要、`javac`/`java`
-だけでビルド・実行できます。中身は**すべてコンパイル前のソースコード**で、
-ビルド済みバイナリは含みません。使い方・ビルド手順・機能一覧は
-[`PixelSpriteEditor/README.md`](PixelSpriteEditor/README.md) を参照してください。
+- [`PixelSpriteEditor/`](PixelSpriteEditor/README.md)（Java / Swing、デスクトップ向け）
+  JDK標準ライブラリのみで実装。外部ライブラリ・ビルドツール不要、`javac`/`java`
+  だけでビルド・実行できます。中身は**すべてコンパイル前のソースコード**で、
+  ビルド済みバイナリは含みません。Swing製デスクトップアプリのため、
+  スマートフォンのOS上ではそのまま動作しません。
+- [`WebPixelSpriteEditor/`](WebPixelSpriteEditor/README.md)（HTML/CSS/素のJavaScript、iPhone等スマホ対応）
+  外部ライブラリ・ビルドツール不要。`index.html` を開くだけで動きます
+  （PCならダブルクリック、iPhoneならホスティングしてSafariで開く）。
+  Java版とほぼ同じ機能を持ち、ピンチズーム・2本指パンなどタッチ操作にも
+  対応しています。詳しくは
+  [`WebPixelSpriteEditor/README.md`](WebPixelSpriteEditor/README.md) を
+  参照してください。
 
-## これまでの経緯（3つの実装）
+両実装とも今後メンテナンス対象です。用途に応じて使い分けてください
+（PCでしっかり作業するならJava版、外出先や手元にiPhoneしかない場合はWeb版）。
+
+## これまでの経緯（Java版に至るまでの3つの実装）
 
 1. **C++ / SDL2**（[`legacy-cpp-sdl2/`](legacy-cpp-sdl2/)）
    最初の実装。動作はしていましたが、ビルドした未署名の `.exe` が Windows
