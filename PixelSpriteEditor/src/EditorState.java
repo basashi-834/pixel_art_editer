@@ -273,6 +273,50 @@ public class EditorState {
         fireChanged();
     }
 
+    /**
+     * Resizes every frame's every layer to width x height, keeping existing
+     * content positioned per the anchor (0.0/0.5/1.0 on each axis = left-or-
+     * top / center / right-or-bottom, same convention as GIMP's Canvas Size).
+     * Content that falls outside the new bounds is cropped away.
+     *
+     * This is a structural change like add/removeFrame/Layer -- not undoable,
+     * and it clears every layer's history, since old undo strokes are pixel
+     * coordinates against the old dimensions and would be meaningless (or
+     * dangerous) to replay against the resized canvas.
+     */
+    public void resizeCanvas(int newWidth, int newHeight, double anchorX, double anchorY) {
+        for (Frame frame : frames) {
+            int oldWidth = frame.getWidth();
+            int oldHeight = frame.getHeight();
+            int offsetX = (int) Math.round((newWidth - oldWidth) * anchorX);
+            int offsetY = (int) Math.round((newHeight - oldHeight) * anchorY);
+
+            for (Layer layer : frame.getLayers()) {
+                PixelCanvas canvas = layer.getCanvas();
+                int[][] oldPixels = new int[oldWidth][oldHeight];
+                for (int y = 0; y < oldHeight; y++) {
+                    for (int x = 0; x < oldWidth; x++) {
+                        oldPixels[x][y] = canvas.getPixel(x, y);
+                    }
+                }
+                canvas.reset(newWidth, newHeight);
+                for (int y = 0; y < oldHeight; y++) {
+                    for (int x = 0; x < oldWidth; x++) {
+                        int nx = x + offsetX;
+                        int ny = y + offsetY;
+                        if (canvas.inBounds(nx, ny)) {
+                            canvas.setPixel(nx, ny, oldPixels[x][y]);
+                        }
+                    }
+                }
+                layer.getHistory().clear();
+            }
+        }
+        selection = null;
+        pasteModeActive = false;
+        fireChanged();
+    }
+
     /** Imports a plain PNG as a fresh single-frame, single-layer project. */
     public void loadFrom(BufferedImage image, String path) {
         frames.clear();
@@ -339,6 +383,11 @@ public class EditorState {
         fireChanged();
     }
 
+    public void selectAll() {
+        PixelCanvas canvas = getCanvas();
+        setSelection(new Rectangle(0, 0, canvas.getWidth(), canvas.getHeight()));
+    }
+
     /** Fills the selection with fully transparent pixels, as one undo step. No-op with no selection. */
     public void deleteSelection() {
         if (selection == null) return;
@@ -346,6 +395,19 @@ public class EditorState {
         for (int dy = 0; dy < selection.height; dy++) {
             for (int dx = 0; dx < selection.width; dx++) {
                 paintPixel(selection.x + dx, selection.y + dy, 0);
+            }
+        }
+        endStroke();
+    }
+
+    /** Fills the selection with the current color, as one undo step. No-op with no selection. */
+    public void fillSelection() {
+        if (selection == null) return;
+        int argb = currentColorArgb;
+        beginStroke();
+        for (int dy = 0; dy < selection.height; dy++) {
+            for (int dx = 0; dx < selection.width; dx++) {
+                paintPixel(selection.x + dx, selection.y + dy, argb);
             }
         }
         endStroke();

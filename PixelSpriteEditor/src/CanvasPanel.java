@@ -12,7 +12,9 @@ import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.image.BufferedImage;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 
 /**
  * Renders the active frame's composited layers at the current zoom with
@@ -37,6 +39,7 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
     private boolean spaceHeld;
     private int hoverX, hoverY;
     private boolean hoverVisible;
+    private final JPopupMenu selectionMenu;
 
     /** Lets EditorWindow show the hovered pixel coordinates in the status bar. */
     public interface HoverListener {
@@ -54,6 +57,59 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         addMouseWheelListener(this);
         addKeyListener(this);
         state.addChangeListener(this::repaint);
+        selectionMenu = buildSelectionMenu();
+    }
+
+    // ---- right-click selection menu ----------------------------------------
+
+    /**
+     * Right-click menu for "what do you want to do with this selection",
+     * matching the operations found in general-purpose paint software
+     * (MS Paint / GIMP style): copy/cut/paste/delete/fill, flip, then
+     * select-all/deselect. Item enablement tracks state.hasSelection() /
+     * state.hasClipboard() exactly like the Edit menu.
+     */
+    private JPopupMenu buildSelectionMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        menu.add(menuItem("コピー", e -> state.copySelection(), () -> state.hasSelection()));
+        menu.add(menuItem("切り取り", e -> state.cutSelection(), () -> state.hasSelection()));
+        menu.add(menuItem("貼り付け", e -> state.beginPaste(), () -> state.hasClipboard()));
+        menu.add(menuItem("削除", e -> state.deleteSelection(), () -> state.hasSelection()));
+        menu.add(menuItem("選択範囲を塗りつぶし", e -> state.fillSelection(), () -> state.hasSelection()));
+        menu.addSeparator();
+        menu.add(menuItem("左右反転", e -> state.flipHorizontal(), () -> true));
+        menu.add(menuItem("上下反転", e -> state.flipVertical(), () -> true));
+        menu.addSeparator();
+        menu.add(menuItem("全て選択", e -> state.selectAll(), () -> true));
+        menu.add(menuItem("選択解除", e -> state.clearSelection(), () -> state.hasSelection()));
+        return menu;
+    }
+
+    private interface EnabledCheck {
+        boolean isEnabled();
+    }
+
+    private JMenuItem menuItem(String text, java.awt.event.ActionListener action, EnabledCheck enabledCheck) {
+        JMenuItem item = new JMenuItem(text);
+        item.addActionListener(action);
+        item.putClientProperty("enabledCheck", enabledCheck);
+        return item;
+    }
+
+    private void showSelectionMenu(int screenX, int screenY) {
+        for (java.awt.Component c : selectionMenu.getComponents()) {
+            if (c instanceof JMenuItem) {
+                EnabledCheck check = (EnabledCheck) ((JMenuItem) c).getClientProperty("enabledCheck");
+                if (check != null) c.setEnabled(check.isEnabled());
+            }
+        }
+        selectionMenu.show(this, screenX, screenY);
+    }
+
+    private void maybeShowSelectionMenu(MouseEvent e) {
+        if (e.isPopupTrigger()) {
+            showSelectionMenu(e.getX(), e.getY());
+        }
     }
 
     public void setHoverListener(HoverListener listener) {
@@ -227,6 +283,11 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
     public void mousePressed(MouseEvent e) {
         requestFocusInWindow();
 
+        if (e.isPopupTrigger()) {
+            maybeShowSelectionMenu(e);
+            return;
+        }
+
         if (state.isPasteModeActive()) {
             if (e.getButton() == MouseEvent.BUTTON1) {
                 state.updatePastePosition(pixelXAt(e.getX()), pixelYAt(e.getY()));
@@ -274,6 +335,12 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
     @Override
     public void mouseReleased(MouseEvent e) {
+        if (e.isPopupTrigger()) {
+            painting = false;
+            panning = false;
+            maybeShowSelectionMenu(e);
+            return;
+        }
         if (panning) {
             panning = false;
             return;

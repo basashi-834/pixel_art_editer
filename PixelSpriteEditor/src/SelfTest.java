@@ -35,6 +35,9 @@ public class SelfTest {
         ok &= check("Flip horizontal mirrors within the selection only", SelfTest::testFlipHorizontal);
         ok &= check("Flip vertical mirrors the whole canvas with no selection", SelfTest::testFlipVertical);
         ok &= check("Project save/load round-trips frames, layers and a custom palette", SelfTest::testProjectRoundTrip);
+        ok &= check("resizeCanvas keeps content anchored and clears history, across all frames/layers", SelfTest::testResizeCanvas);
+        ok &= check("fillSelection fills only the selection as one undo step", SelfTest::testFillSelection);
+        ok &= check("selectAll selects the whole canvas", SelfTest::testSelectAll);
 
         System.out.println(ok ? "SELFTEST: ALL PASSED" : "SELFTEST: FAILURES ABOVE");
         System.exit(ok ? 0 : 1);
@@ -349,6 +352,74 @@ public class SelfTest {
         } finally {
             if (tmp != null) tmp.delete();
         }
+    }
+
+    private static boolean testResizeCanvas() {
+        EditorState state = new EditorState(4, 4);
+        state.paintPixel(0, 0, (int) 0xFFFF0000); // frame 0, layer 0 (bottom)
+
+        state.addLayer();
+        state.beginStroke();
+        state.paintPixel(3, 3, (int) 0xFF00FF00); // frame 0, layer 1 (top)
+        state.endStroke();
+        boolean hadUndoBeforeResize = state.getHistory().canUndo();
+
+        state.addFrame();
+        state.paintPixel(1, 1, (int) 0xFF0000FF); // frame 1's own (single) layer
+
+        // Grow 4x4 -> 6x6, anchored bottom-right: existing content shifts by (+2, +2).
+        state.resizeCanvas(6, 6, 1.0, 1.0);
+
+        boolean sizeGrew = state.getCanvas().getWidth() == 6 && state.getCanvas().getHeight() == 6;
+        boolean frame1ContentMoved = state.getCanvas().getPixel(3, 3) == (int) 0xFF0000FF
+                && state.getCanvas().getPixel(1, 1) == 0;
+
+        state.setActiveFrameIndex(0);
+        state.setActiveLayerIndex(1);
+        boolean historyClearedAcrossResize = !state.getHistory().canUndo();
+        boolean topLayerContentMoved = state.getCanvas().getPixel(5, 5) == (int) 0xFF00FF00
+                && state.getCanvas().getPixel(3, 3) == 0;
+
+        state.setActiveLayerIndex(0);
+        boolean bottomLayerContentMoved = state.getCanvas().getPixel(2, 2) == (int) 0xFFFF0000
+                && state.getCanvas().getPixel(0, 0) == 0;
+
+        // Shrink 6x6 -> 2x2, anchored top-left: the red pixel (now at (2,2)) falls
+        // outside the new bounds and must be cropped away, not wrapped or kept.
+        state.resizeCanvas(2, 2, 0.0, 0.0);
+        boolean sizeShrank = state.getCanvas().getWidth() == 2 && state.getCanvas().getHeight() == 2;
+        boolean croppedContentGone = state.getCanvas().getPixel(0, 0) == 0
+                && state.getCanvas().getPixel(1, 0) == 0
+                && state.getCanvas().getPixel(0, 1) == 0
+                && state.getCanvas().getPixel(1, 1) == 0;
+
+        return hadUndoBeforeResize && sizeGrew && frame1ContentMoved && historyClearedAcrossResize
+                && topLayerContentMoved && bottomLayerContentMoved && sizeShrank && croppedContentGone;
+    }
+
+    private static boolean testFillSelection() {
+        EditorState state = new EditorState(5, 5);
+        state.setSelection(new java.awt.Rectangle(1, 1, 2, 2));
+        state.setCurrentColorArgb((int) 0xFF00FFFF);
+        state.fillSelection();
+
+        boolean insideFilled = state.getCanvas().getPixel(1, 1) == (int) 0xFF00FFFF
+                && state.getCanvas().getPixel(2, 2) == (int) 0xFF00FFFF;
+        boolean outsideUntouched = state.getCanvas().getPixel(0, 0) == 0
+                && state.getCanvas().getPixel(3, 3) == 0;
+        boolean fillIsOneUndoStep = state.getHistory().canUndo();
+        state.undo();
+        boolean undoClearsFill = state.getCanvas().getPixel(1, 1) == 0;
+
+        return insideFilled && outsideUntouched && fillIsOneUndoStep && undoClearsFill;
+    }
+
+    private static boolean testSelectAll() {
+        EditorState state = new EditorState(4, 3);
+        state.setSelection(new java.awt.Rectangle(0, 0, 1, 1));
+        state.selectAll();
+        java.awt.Rectangle sel = state.getSelection();
+        return sel.x == 0 && sel.y == 0 && sel.width == 4 && sel.height == 3;
     }
 
     private static boolean check(String name, BooleanSupplier test) {

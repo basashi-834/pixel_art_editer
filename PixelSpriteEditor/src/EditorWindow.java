@@ -56,6 +56,8 @@ public class EditorWindow extends JFrame {
     private JMenuItem menuCut;
     private JMenuItem menuPaste;
     private JMenuItem menuDeleteSelection;
+    private JMenuItem menuFillSelection;
+    private JMenuItem menuDeselect;
     private JCheckBoxMenuItem menuTogglePixelGrid;
     private JCheckBoxMenuItem menuToggle16Guide;
     private JCheckBoxMenuItem menuToggleChecker;
@@ -106,6 +108,8 @@ public class EditorWindow extends JFrame {
         file.add(menuItem("保存", KeyEvent.VK_S, 0, e -> onSave()));
         file.add(menuItem("名前を付けて保存...", KeyEvent.VK_S, InputEvent.SHIFT_DOWN_MASK, e -> onSaveAs()));
         file.addSeparator();
+        file.add(plainMenuItem("キャンバスをリサイズ...", e -> onResizeCanvas()));
+        file.addSeparator();
         file.add(plainMenuItem("プロジェクトを開く...", e -> onOpenProject()));
         file.add(plainMenuItem("プロジェクトを保存", e -> onSaveProject()));
         file.add(plainMenuItem("名前を付けてプロジェクトを保存...", e -> onSaveProjectAs()));
@@ -127,13 +131,21 @@ public class EditorWindow extends JFrame {
         menuDeleteSelection = new JMenuItem("選択範囲を削除");
         menuDeleteSelection.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0));
         menuDeleteSelection.addActionListener(e -> state.deleteSelection());
+        menuFillSelection = new JMenuItem("選択範囲を塗りつぶし");
+        menuFillSelection.addActionListener(e -> state.fillSelection());
         edit.add(menuCopy);
         edit.add(menuCut);
         edit.add(menuPaste);
         edit.add(menuDeleteSelection);
+        edit.add(menuFillSelection);
         edit.addSeparator();
         edit.add(plainMenuItem("左右反転", e -> state.flipHorizontal()));
         edit.add(plainMenuItem("上下反転", e -> state.flipVertical()));
+        edit.addSeparator();
+        edit.add(menuItem("全て選択", KeyEvent.VK_A, 0, e -> state.selectAll()));
+        menuDeselect = new JMenuItem("選択解除");
+        menuDeselect.addActionListener(e -> state.clearSelection());
+        edit.add(menuDeselect);
         bar.add(edit);
 
         JMenu view = new JMenu("表示");
@@ -241,6 +253,17 @@ public class EditorWindow extends JFrame {
         Dimension size = dialog.getResult();
         if (size != null) {
             state.newCanvas(size.width, size.height);
+            canvasPanel.centerCamera();
+        }
+    }
+
+    private void onResizeCanvas() {
+        PixelCanvas canvas = state.getCanvas();
+        ResizeCanvasDialog dialog = new ResizeCanvasDialog(this, canvas.getWidth(), canvas.getHeight());
+        dialog.setVisible(true);
+        ResizeCanvasDialog.Result result = dialog.getResult();
+        if (result != null) {
+            state.resizeCanvas(result.width, result.height, result.anchorX, result.anchorY);
             canvasPanel.centerCamera();
         }
     }
@@ -400,6 +423,8 @@ public class EditorWindow extends JFrame {
         menuCopy.setEnabled(state.hasSelection());
         menuCut.setEnabled(state.hasSelection());
         menuDeleteSelection.setEnabled(state.hasSelection());
+        menuFillSelection.setEnabled(state.hasSelection());
+        menuDeselect.setEnabled(state.hasSelection());
         menuPaste.setEnabled(state.hasClipboard());
 
         JToggleButton active = toolButtons.get(state.getCurrentToolType());
