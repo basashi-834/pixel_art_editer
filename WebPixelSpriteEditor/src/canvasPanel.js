@@ -9,8 +9,8 @@
 // panel = camera.pan + src * camera.zoom
 var PSE = window.PSE || (window.PSE = {});
 
-PSE.MIN_ZOOM = 1;
-PSE.MAX_ZOOM = 64;
+PSE.MIN_ZOOM = 0.05;
+PSE.MAX_ZOOM = 128;
 
 PSE.CanvasPanel = function (state, canvas, statusCoordsEl, statusZoomEl) {
   this.state = state;
@@ -39,13 +39,26 @@ PSE.CanvasPanel = function (state, canvas, statusCoordsEl, statusZoomEl) {
   });
 };
 
+// Fits the whole sprite inside the viewport (never just its top-left corner,
+// even for a large loaded image) and centers it there. Called after New /
+// Open / canvas resize / project load, and on first render.
 PSE.CanvasPanel.prototype.centerCamera = function () {
   var rect = this.canvas.getBoundingClientRect();
   var w = this.state.project.width, h = this.state.project.height;
-  var zoom = this.state.camera.zoom;
+  var zoom = this._fitZoom(rect.width, rect.height, w, h);
+  this.state.camera.zoom = zoom;
   this.state.camera.panX = Math.round((rect.width - w * zoom) / 2);
   this.state.camera.panY = Math.round((rect.height - h * zoom) / 2);
   this.needsCenter = false;
+};
+
+PSE.CanvasPanel.prototype._fitZoom = function (viewportW, viewportH, imgW, imgH) {
+  if (viewportW <= 0 || viewportH <= 0 || imgW <= 0 || imgH <= 0) return this.state.camera.zoom;
+  var pad = 4;
+  var availW = Math.max(1, viewportW - pad * 2);
+  var availH = Math.max(1, viewportH - pad * 2);
+  var fit = Math.min(availW / imgW, availH / imgH);
+  return Math.min(PSE.MAX_ZOOM, Math.max(PSE.MIN_ZOOM, fit));
 };
 
 PSE.CanvasPanel.prototype._observeResize = function () {

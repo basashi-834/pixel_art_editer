@@ -31,7 +31,7 @@ public class EditorState {
 
     public enum ToolType { PENCIL, ERASER, FILL, EYEDROPPER, LINE, SELECT }
 
-    public static final int[] ZOOM_STEPS = {1, 2, 3, 4, 6, 8, 12, 16, 24, 32};
+    public static final double[] ZOOM_STEPS = {0.0625, 0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64};
 
     private static final int[] DEFAULT_PALETTE_COLORS = {
         0x00000000, // transparent
@@ -67,7 +67,7 @@ public class EditorState {
     private boolean showTransparencyChecker = true;
     private boolean onionSkinEnabled = false;
 
-    private int zoom = 8;
+    private double zoom = 8;
     private double camOffsetX;
     private double camOffsetY;
 
@@ -652,7 +652,7 @@ public class EditorState {
 
     // ---- zoom / camera ------------------------------------------------------
 
-    public int getZoom() {
+    public double getZoom() {
         return zoom;
     }
 
@@ -670,8 +670,8 @@ public class EditorState {
         camOffsetY += dy;
     }
 
-    public void setZoom(int newZoom, double anchorX, double anchorY) {
-        int clamped = Math.max(ZOOM_STEPS[0], Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], newZoom));
+    public void setZoom(double newZoom, double anchorX, double anchorY) {
+        double clamped = Math.max(ZOOM_STEPS[0], Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], newZoom));
         double pxf = (anchorX - camOffsetX) / zoom;
         double pyf = (anchorY - camOffsetY) / zoom;
         zoom = clamped;
@@ -689,27 +689,65 @@ public class EditorState {
     }
 
     private void stepZoom(int direction, double anchorX, double anchorY) {
-        int idx = -1;
-        for (int i = 0; i < ZOOM_STEPS.length; i++) {
-            if (ZOOM_STEPS[i] == zoom) {
-                idx = i;
-                break;
-            }
+        int idx = indexOfZoomStep(zoom);
+        if (idx >= 0) {
+            idx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + direction));
+        } else {
+            // Current zoom (e.g. from fitting a just-loaded image to the
+            // viewport) doesn't sit exactly on a step -- move to the nearest
+            // step in the requested direction instead of snapping to an end.
+            idx = nearestStepIndex(direction);
         }
-        if (idx < 0) idx = 0;
-        idx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + direction));
         setZoom(ZOOM_STEPS[idx], anchorX, anchorY);
     }
 
-    /** Centers the canvas within a viewport of the given size (0x0 = just reset to origin). */
+    private int indexOfZoomStep(double z) {
+        for (int i = 0; i < ZOOM_STEPS.length; i++) {
+            if (ZOOM_STEPS[i] == z) return i;
+        }
+        return -1;
+    }
+
+    private int nearestStepIndex(int direction) {
+        if (direction > 0) {
+            for (int i = 0; i < ZOOM_STEPS.length; i++) {
+                if (ZOOM_STEPS[i] > zoom) return i;
+            }
+            return ZOOM_STEPS.length - 1;
+        } else {
+            for (int i = ZOOM_STEPS.length - 1; i >= 0; i--) {
+                if (ZOOM_STEPS[i] < zoom) return i;
+            }
+            return 0;
+        }
+    }
+
+    /**
+     * Centers the canvas within a viewport of the given size (0x0 = just
+     * reset to origin), first fitting the zoom to the largest step at which
+     * the whole image fits inside the viewport -- so opening or creating a
+     * large image is never left showing only a corner of it.
+     */
     public void centerCamera(double viewportWidth, double viewportHeight) {
         if (viewportWidth <= 0 || viewportHeight <= 0) {
             camOffsetX = 0;
             camOffsetY = 0;
             return;
         }
+        fitZoomToViewport(viewportWidth, viewportHeight);
         camOffsetX = (viewportWidth - getCanvas().getWidth() * zoom) / 2.0;
         camOffsetY = (viewportHeight - getCanvas().getHeight() * zoom) / 2.0;
+    }
+
+    /** Sets zoom to the largest step that fits the active canvas entirely inside the given viewport. */
+    private void fitZoomToViewport(double viewportWidth, double viewportHeight) {
+        PixelCanvas canvas = getCanvas();
+        double rawFit = Math.min(viewportWidth / canvas.getWidth(), viewportHeight / canvas.getHeight());
+        double best = ZOOM_STEPS[0];
+        for (double step : ZOOM_STEPS) {
+            if (step <= rawFit) best = step;
+        }
+        zoom = best;
     }
 
     // ---- line-tool preview (drawn by CanvasPanel, never touches the canvas) ---

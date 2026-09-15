@@ -116,9 +116,10 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         this.hoverListener = listener;
     }
 
-    /** Centers the sprite in the current viewport. Call after the panel has a real size (componentShown) and after New/Open. */
+    /** Fits + centers the sprite in the current viewport. Call after the panel has a real size (componentShown) and after New/Open/Resize. */
     public void centerCamera() {
         state.centerCamera(getWidth(), getHeight());
+        state.fireChanged();
         repaint();
     }
 
@@ -128,12 +129,12 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         PixelCanvas canvas = state.getCanvas();
-        int zoom = state.getZoom();
+        double zoom = state.getZoom();
         Rectangle rect = new Rectangle(
                 (int) Math.round(state.getCamOffsetX()),
                 (int) Math.round(state.getCamOffsetY()),
-                canvas.getWidth() * zoom,
-                canvas.getHeight() * zoom);
+                (int) Math.round(canvas.getWidth() * zoom),
+                (int) Math.round(canvas.getHeight() * zoom));
 
         Graphics2D g2 = (Graphics2D) g.create();
         try {
@@ -200,33 +201,34 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         gc.dispose();
     }
 
-    private void drawGrid(Graphics2D g2, Rectangle rect, int zoom, int step) {
+    private void drawGrid(Graphics2D g2, Rectangle rect, double zoom, int step) {
         PixelCanvas canvas = state.getCanvas();
         for (int x = 0; x <= canvas.getWidth(); x += step) {
-            int sx = rect.x + x * zoom;
+            int sx = rect.x + (int) Math.round(x * zoom);
             g2.drawLine(sx, rect.y, sx, rect.y + rect.height);
         }
         for (int y = 0; y <= canvas.getHeight(); y += step) {
-            int sy = rect.y + y * zoom;
+            int sy = rect.y + (int) Math.round(y * zoom);
             g2.drawLine(rect.x, sy, rect.x + rect.width, sy);
         }
     }
 
-    private void drawPreviewLine(Graphics2D g2, Rectangle rect, int zoom) {
+    private void drawPreviewLine(Graphics2D g2, Rectangle rect, double zoom) {
         int argb = state.getCurrentColorArgb();
         g2.setColor(new Color(argb, true));
+        int size = Math.max(1, (int) Math.round(zoom));
         LineUtil.forEachLinePixel(
                 state.getPreviewX0(), state.getPreviewY0(),
                 state.getPreviewX1(), state.getPreviewY1(),
-                (px, py) -> g2.fillRect(rect.x + px * zoom, rect.y + py * zoom, zoom, zoom));
+                (px, py) -> g2.fillRect(rect.x + (int) Math.round(px * zoom), rect.y + (int) Math.round(py * zoom), size, size));
     }
 
-    private void drawSelection(Graphics2D g2, Rectangle rect, int zoom) {
+    private void drawSelection(Graphics2D g2, Rectangle rect, double zoom) {
         Rectangle sel = state.getSelection();
-        int sx = rect.x + sel.x * zoom;
-        int sy = rect.y + sel.y * zoom;
-        int sw = sel.width * zoom;
-        int sh = sel.height * zoom;
+        int sx = rect.x + (int) Math.round(sel.x * zoom);
+        int sy = rect.y + (int) Math.round(sel.y * zoom);
+        int sw = (int) Math.round(sel.width * zoom);
+        int sh = (int) Math.round(sel.height * zoom);
         Graphics2D gs = (Graphics2D) g2.create();
         gs.setStroke(new java.awt.BasicStroke(1, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER,
                 1, new float[] {4, 4}, 0));
@@ -239,27 +241,28 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
         gs.dispose();
     }
 
-    private void drawPastePreview(Graphics2D g2, Rectangle rect, int zoom) {
+    private void drawPastePreview(Graphics2D g2, Rectangle rect, double zoom) {
         BufferedImage clip = state.getClipboardImage();
         if (clip == null) return;
         Rectangle pasteRect = new Rectangle(
-                rect.x + state.getPasteX() * zoom,
-                rect.y + state.getPasteY() * zoom,
-                clip.getWidth() * zoom,
-                clip.getHeight() * zoom);
+                rect.x + (int) Math.round(state.getPasteX() * zoom),
+                rect.y + (int) Math.round(state.getPasteY() * zoom),
+                (int) Math.round(clip.getWidth() * zoom),
+                (int) Math.round(clip.getHeight() * zoom));
         drawImageScaled(g2, clip, pasteRect, 0.75f);
         g2.setColor(Color.WHITE);
         g2.drawRect(pasteRect.x, pasteRect.y, pasteRect.width, pasteRect.height);
     }
 
-    private void drawHoverHighlight(Graphics2D g2, Rectangle rect, int zoom) {
-        int x0 = rect.x + hoverX * zoom;
-        int y0 = rect.y + hoverY * zoom;
+    private void drawHoverHighlight(Graphics2D g2, Rectangle rect, double zoom) {
+        int x0 = rect.x + (int) Math.round(hoverX * zoom);
+        int y0 = rect.y + (int) Math.round(hoverY * zoom);
+        int zi = Math.max(1, (int) Math.round(zoom));
         g2.setColor(Color.BLACK);
-        g2.drawRect(x0, y0, Math.max(0, zoom - 1), Math.max(0, zoom - 1));
+        g2.drawRect(x0, y0, Math.max(0, zi - 1), Math.max(0, zi - 1));
         if (zoom >= 6) {
             g2.setColor(Color.WHITE);
-            g2.drawRect(x0 + 1, y0 + 1, Math.max(0, zoom - 3), Math.max(0, zoom - 3));
+            g2.drawRect(x0 + 1, y0 + 1, Math.max(0, zi - 3), Math.max(0, zi - 3));
         }
     }
 

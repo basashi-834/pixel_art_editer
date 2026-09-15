@@ -413,7 +413,7 @@ public class EditorWindow extends JFrame {
     // ---- refresh ------------------------------------------------------------
 
     private void refreshChrome() {
-        zoomLabel.setText((state.getZoom() * 100) + "%");
+        zoomLabel.setText(formatZoomPercent(state.getZoom()));
 
         undoBtn.setEnabled(state.getHistory().canUndo());
         redoBtn.setEnabled(state.getHistory().canRedo());
@@ -442,6 +442,15 @@ public class EditorWindow extends JFrame {
         PixelCanvas canvas = state.getCanvas();
         statusRight.setText(canvas.getWidth() + "x" + canvas.getHeight()
                 + "   フレーム " + (state.getActiveFrameIndex() + 1) + "/" + state.getFrames().size()
-                + "   " + (state.getZoom() * 100) + "%   " + pathText);
+                + "   " + formatZoomPercent(state.getZoom()) + "   " + pathText);
+    }
+
+    /** "800%" for whole percentages, "12.5%" for the fractional zoom steps used to fit large images. */
+    private static String formatZoomPercent(double zoom) {
+        double pct = zoom * 100;
+        if (pct == Math.rint(pct)) {
+            return (long) pct + "%";
+        }
+        return String.format("%.1f%%", pct);
     }
 }
