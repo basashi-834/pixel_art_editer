@@ -44,6 +44,7 @@ public final class ProjectIO {
                     String key = "frame" + fi + ".layer" + li;
                     manifest.append(key).append(".name=").append(escape(layer.getName())).append('\n');
                     manifest.append(key).append(".visible=").append(layer.isVisible()).append('\n');
+                    manifest.append(key).append(".opacity=").append(layer.getOpacity()).append('\n');
 
                     zip.putNextEntry(new ZipEntry(key + ".png"));
                     ImageIO.write(layer.getCanvas().getImage(), "png", zip);
@@ -93,6 +94,7 @@ public final class ProjectIO {
                     String key = "frame" + fi + ".layer" + li;
                     String name = manifest.getProperty(key + ".name", "レイヤー" + (li + 1));
                     boolean visible = Boolean.parseBoolean(manifest.getProperty(key + ".visible", "true"));
+                    float opacity = Float.parseFloat(manifest.getProperty(key + ".opacity", "1.0"));
 
                     ZipEntry pngEntry = zip.getEntry(key + ".png");
                     if (pngEntry == null) throw new IOException("Missing layer image: " + key + ".png");
@@ -102,7 +104,7 @@ public final class ProjectIO {
                     }
                     PixelCanvas canvas = new PixelCanvas(img.getWidth(), img.getHeight());
                     canvas.loadFrom(img);
-                    frame.addLoadedLayer(new Layer(name, visible, canvas));
+                    frame.addLoadedLayer(new Layer(name, visible, opacity, canvas));
                 }
                 if (frame.getLayers().isEmpty()) throw new IOException("Frame " + fi + " has no layers");
                 frame.setActiveLayerIndex(Integer.parseInt(manifest.getProperty("frame" + fi + ".activeLayer", "0")));

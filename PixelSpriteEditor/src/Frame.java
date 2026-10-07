@@ -1,3 +1,4 @@
+import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -75,6 +76,21 @@ public class Frame {
         activeLayerIndex = to;
     }
 
+    /**
+     * Adds a new layer sized to this frame's dimensions with the given image
+     * drawn at (0, 0) (clipped if larger than the frame), and makes it
+     * active. Used when a dropped image file is loaded into a project that
+     * already has work in progress, so the drop doesn't overwrite it.
+     */
+    public void addImageAsLayer(BufferedImage image, String name) {
+        Layer layer = new Layer(name, getWidth(), getHeight());
+        Graphics2D g2 = layer.getCanvas().getImage().createGraphics();
+        g2.drawImage(image, 0, 0, null);
+        g2.dispose();
+        layers.add(layer);
+        activeLayerIndex = layers.size() - 1;
+    }
+
     /** A deep copy: new PixelCanvas/History per layer, so editing the copy never touches this frame. */
     public Frame duplicate() {
         Frame copy = new Frame();
@@ -89,6 +105,7 @@ public class Frame {
         Graphics2D g2 = result.createGraphics();
         for (Layer layer : layers) {
             if (layer.isVisible()) {
+                g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, layer.getOpacity()));
                 g2.drawImage(layer.getCanvas().getImage(), 0, 0, null);
             }
         }

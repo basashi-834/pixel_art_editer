@@ -12,6 +12,7 @@ PSE.Layer = function (width, height, name) {
   this.id = newId();
   this.name = name || "レイヤー";
   this.visible = true;
+  this.opacity = 1;
   this.width = width;
   this.height = height;
   this.canvas = document.createElement("canvas");
@@ -54,6 +55,7 @@ PSE.Layer.prototype.clone = function () {
   var copy = new PSE.Layer(this.width, this.height, this.name + " コピー");
   copy.setImageData(PSE.History.cloneImageData(this.imageData));
   copy.visible = this.visible;
+  copy.opacity = this.opacity;
   return copy;
 };
 
@@ -107,7 +109,10 @@ PSE.Frame.prototype.compositeInto = function (ctx, offsetX, offsetY) {
   for (var i = 0; i < this.layers.length; i++) {
     var layer = this.layers[i];
     if (!layer.visible) continue;
+    ctx.save();
+    ctx.globalAlpha = layer.opacity == null ? 1 : layer.opacity;
     ctx.drawImage(layer.canvas, offsetX, offsetY);
+    ctx.restore();
   }
 };
 
@@ -182,6 +187,20 @@ PSE.Project.prototype.resizeCanvas = function (newWidth, newHeight, anchorX, anc
   this.frames.forEach(function (f) { f.resize(newWidth, newHeight, anchorX, anchorY); });
   this.width = newWidth;
   this.height = newHeight;
+};
+
+// True when nothing has been drawn yet (one blank frame, one blank layer) -
+// used to decide whether a dropped image should replace the project or be
+// added as a new layer on top of work already in progress.
+PSE.Project.prototype.isPristine = function () {
+  if (this.frames.length !== 1) return false;
+  var layers = this.frames[0].layers;
+  if (layers.length !== 1) return false;
+  var data = layers[0].imageData.data;
+  for (var i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) return false;
+  }
+  return true;
 };
 
 PSE.Project.prototype.addRecentColor = function (color) {

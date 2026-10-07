@@ -83,6 +83,40 @@ PSE.FileIO.openPNG = function (state) {
   });
 };
 
+// ---- Drag & drop image load ---------------------------------------------------
+
+// Dropping an image file onto the app loads it: if the canvas is still
+// blank (pristine), it behaves like Open PNG (replaces the project, sized
+// to the image). Otherwise work is already in progress, so the image is
+// added as a new layer on the active frame instead of overwriting it.
+PSE.FileIO.handleDroppedImageFile = function (state, file) {
+  if (!file || file.type.indexOf("image/") !== 0) return;
+  var url = URL.createObjectURL(file);
+  loadImage(url).then(function (img) {
+    URL.revokeObjectURL(url);
+    if (state.project.isPristine()) {
+      var project = new PSE.Project(img.naturalWidth, img.naturalHeight);
+      var layer = project.activeLayer();
+      layer.ctx.drawImage(img, 0, 0);
+      layer.imageData = layer.ctx.getImageData(0, 0, layer.width, layer.height);
+      state.loadProject(project);
+    } else {
+      var frame = state.project.activeFrame();
+      var name = file.name ? file.name.replace(/\.[^.]+$/, "") : "画像";
+      var layer = new PSE.Layer(frame.width, frame.height, name);
+      layer.ctx.drawImage(img, 0, 0);
+      layer.imageData = layer.ctx.getImageData(0, 0, layer.width, layer.height);
+      frame.layers.push(layer);
+      frame.activeLayerIndex = frame.layers.length - 1;
+      state.notifyStructureChanged();
+      state.notifyPixelsChanged();
+    }
+  }).catch(function () {
+    URL.revokeObjectURL(url);
+    alert("画像の読み込みに失敗しました。");
+  });
+};
+
 // ---- Sprite sheet export ----------------------------------------------------------
 
 PSE.FileIO.exportSpriteSheet = function (state, columns) {
@@ -123,7 +157,7 @@ PSE.FileIO.saveProject = function (state) {
       return {
         activeLayerIndex: frame.activeLayerIndex,
         layers: frame.layers.map(function (layer) {
-          return { name: layer.name, visible: layer.visible, png: layer.canvas.toDataURL("image/png") };
+          return { name: layer.name, visible: layer.visible, opacity: layer.opacity, png: layer.canvas.toDataURL("image/png") };
         })
       };
     })
@@ -163,6 +197,7 @@ PSE.FileIO._projectFromData = function (data) {
       return loadImage(layerData.png).then(function (img) {
         var layer = new PSE.Layer(data.width, data.height, layerData.name);
         layer.visible = layerData.visible;
+        layer.opacity = layerData.opacity == null ? 1 : layerData.opacity;
         layer.ctx.drawImage(img, 0, 0);
         layer.imageData = layer.ctx.getImageData(0, 0, layer.width, layer.height);
         return layer;

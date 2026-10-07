@@ -38,6 +38,9 @@ public class SelfTest {
         ok &= check("resizeCanvas keeps content anchored and clears history, across all frames/layers", SelfTest::testResizeCanvas);
         ok &= check("fillSelection fills only the selection as one undo step", SelfTest::testFillSelection);
         ok &= check("selectAll selects the whole canvas", SelfTest::testSelectAll);
+        ok &= check("Layer opacity affects composite and round-trips through project save/load", SelfTest::testLayerOpacity);
+        ok &= check("isPristine/addImageAsNewLayer: blank canvas vs. work in progress", SelfTest::testPristineAndImageAsLayer);
+        ok &= check("copyFromFrame copies the previous/next frame onto the active layer", SelfTest::testCopyFromFrame);
 
         System.out.println(ok ? "SELFTEST: ALL PASSED" : "SELFTEST: FAILURES ABOVE");
         System.exit(ok ? 0 : 1);
@@ -420,6 +423,65 @@ public class SelfTest {
         state.selectAll();
         java.awt.Rectangle sel = state.getSelection();
         return sel.x == 0 && sel.y == 0 && sel.width == 4 && sel.height == 3;
+    }
+
+    private static boolean testLayerOpacity() {
+        EditorState state = new EditorState(2, 2);
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        state.setLayerOpacity(0, 0.5f);
+        int composited = state.getCompositeImage().getRGB(0, 0);
+        boolean halvedAlpha = ((composited >>> 24) & 0xFF) == 127 || ((composited >>> 24) & 0xFF) == 128;
+
+        File tmp = null;
+        try {
+            tmp = File.createTempFile("pse-selftest-opacity-", ".pxproj");
+            ProjectIO.save(state, tmp);
+            EditorState loaded = new EditorState(1, 1);
+            ProjectIO.load(loaded, tmp);
+            boolean opacityRoundTripped = Math.abs(loaded.getLayers().get(0).getOpacity() - 0.5f) < 0.001f;
+            return halvedAlpha && opacityRoundTripped;
+        } catch (IOException e) {
+            return false;
+        } finally {
+            if (tmp != null) tmp.delete();
+        }
+    }
+
+    private static boolean testPristineAndImageAsLayer() {
+        EditorState state = new EditorState(4, 4);
+        boolean blankIsPristine = state.isPristine();
+
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        boolean paintedIsNotPristine = !state.isPristine();
+
+        BufferedImage dropped = new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB);
+        dropped.setRGB(0, 0, (int) 0xFF00FF00);
+        state.addImageAsNewLayer(dropped, "dropped");
+        boolean addedAsNewLayer = state.getLayers().size() == 2 && state.getActiveLayerIndex() == 1;
+        boolean existingLayerUntouched = state.getLayers().get(0).getCanvas().getPixel(0, 0) == (int) 0xFFFF0000;
+        boolean newLayerHasImage = state.getCanvas().getPixel(0, 0) == (int) 0xFF00FF00;
+
+        return blankIsPristine && paintedIsNotPristine && addedAsNewLayer
+                && existingLayerUntouched && newLayerHasImage;
+    }
+
+    private static boolean testCopyFromFrame() {
+        EditorState state = new EditorState(2, 2);
+        state.paintPixel(0, 0, (int) 0xFFFF0000);
+        state.addFrame();
+        boolean newFrameBlank = state.getCanvas().getPixel(0, 0) == 0;
+
+        state.copyFromFrame(-1); // pull frame 0's content into frame 1
+        boolean copiedFromPrev = state.getCanvas().getPixel(0, 0) == (int) 0xFFFF0000;
+        boolean copyIsOneUndoStep = state.getHistory().canUndo();
+        state.undo();
+        boolean undoClearsCopy = state.getCanvas().getPixel(0, 0) == 0;
+
+        state.setActiveFrameIndex(0);
+        state.copyFromFrame(1); // pull frame 1's (still blank) content into frame 0
+        boolean copiedFromNextClearsFrame0 = state.getCanvas().getPixel(0, 0) == 0;
+
+        return newFrameBlank && copiedFromPrev && copyIsOneUndoStep && undoClearsCopy && copiedFromNextClearsFrame0;
     }
 
     private static boolean check(String name, BooleanSupplier test) {

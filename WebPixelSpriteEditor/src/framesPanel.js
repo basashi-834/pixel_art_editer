@@ -16,6 +16,8 @@ PSE.FramesPanel = function (state, root) {
   this.btnRight = root.querySelector("#btn-frame-right");
   this.btnPlay = root.querySelector("#btn-frame-play");
   this.chkOnionSkin = root.querySelector("#chk-onion-skin");
+  this.btnOnionCopyPrev = root.querySelector("#btn-onion-copy-prev");
+  this.btnOnionCopyNext = root.querySelector("#btn-onion-copy-next");
   this.playTimer = null;
 
   this._bind();
@@ -84,6 +86,28 @@ PSE.FramesPanel.prototype._bind = function () {
     state.onionSkin = self.chkOnionSkin.checked;
     state.notifyPixelsChanged();
   });
+
+  this.btnOnionCopyPrev.addEventListener("click", function () { self._copyFromFrame(-1); });
+  this.btnOnionCopyNext.addEventListener("click", function () { self._copyFromFrame(1); });
+};
+
+// Copies the composited content of the previous/next frame (offset -1/+1,
+// the same frame onion skin fades in behind the current one) onto the
+// active layer of the current frame, overwriting its pixels.
+PSE.FramesPanel.prototype._copyFromFrame = function (offset) {
+  var state = this.state;
+  var p = state.project;
+  var srcIdx = p.activeFrameIndex + offset;
+  if (srcIdx < 0 || srcIdx >= p.frames.length) return;
+  var srcFrame = p.frames[srcIdx];
+  var layer = p.activeFrame().activeLayer();
+  layer.history.beginStroke(layer.imageData);
+  layer.ctx.clearRect(0, 0, layer.width, layer.height);
+  srcFrame.compositeInto(layer.ctx, 0, 0);
+  layer.imageData = layer.ctx.getImageData(0, 0, layer.width, layer.height);
+  layer.history.commitStroke(layer.imageData);
+  state.notifyPixelsChanged();
+  state.notifyStructureChanged();
 };
 
 PSE.FramesPanel.prototype._startPlaying = function () {
@@ -138,4 +162,6 @@ PSE.FramesPanel.prototype.render = function () {
   this.btnLeft.disabled = p.activeFrameIndex <= 0;
   this.btnRight.disabled = p.activeFrameIndex >= p.frames.length - 1;
   this.chkOnionSkin.checked = state.onionSkin;
+  this.btnOnionCopyPrev.disabled = !state.onionSkin || p.activeFrameIndex <= 0;
+  this.btnOnionCopyNext.disabled = !state.onionSkin || p.activeFrameIndex >= p.frames.length - 1;
 };

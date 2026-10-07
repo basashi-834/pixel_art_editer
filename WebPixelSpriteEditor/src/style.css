@@ -32,6 +32,23 @@ input, textarea, select {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+#app.drag-target::after {
+  content: "画像をドロップして読み込む";
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(74, 144, 217, 0.25);
+  border: 4px dashed #4a90d9;
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  pointer-events: none;
 }
 
 /* ---- Header / toolbar ------------------------------------------------------ */
@@ -210,6 +227,8 @@ input, textarea, select {
   border: 1px solid transparent;
 }
 .layer-row.active { background: #3a4a5a; border-color: #4a90d9; }
+.layer-row.dragging { opacity: .4; }
+.layer-row.drag-over { border-color: #e2a53c; border-style: dashed; }
 .layer-thumb { border: 1px solid #111; background: #444; image-rendering: pixelated; flex-shrink: 0; }
 .layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 

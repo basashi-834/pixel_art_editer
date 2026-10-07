@@ -35,6 +35,8 @@ public class FramesPanel extends JPanel {
     private JButton deleteBtn;
     private JButton leftBtn;
     private JButton rightBtn;
+    private JButton copyPrevBtn;
+    private JButton copyNextBtn;
 
     public FramesPanel(EditorState state) {
         this.state = state;
@@ -79,6 +81,13 @@ public class FramesPanel extends JPanel {
         JCheckBox onionSkin = new JCheckBox("オニオンスキン", state.isOnionSkinEnabled());
         onionSkin.addActionListener(e -> state.setOnionSkinEnabled(onionSkin.isSelected()));
 
+        copyPrevBtn = new JButton("⬅コピー");
+        copyPrevBtn.setToolTipText("前のフレームの内容をアクティブレイヤーにコピー");
+        copyPrevBtn.addActionListener(e -> state.copyFromFrame(-1));
+        copyNextBtn = new JButton("➡コピー");
+        copyNextBtn.setToolTipText("次のフレームの内容をアクティブレイヤーにコピー");
+        copyNextBtn.addActionListener(e -> state.copyFromFrame(1));
+
         row.add(addBtn);
         row.add(dupBtn);
         row.add(deleteBtn);
@@ -86,6 +95,8 @@ public class FramesPanel extends JPanel {
         row.add(rightBtn);
         row.add(playBtn);
         row.add(onionSkin);
+        row.add(copyPrevBtn);
+        row.add(copyNextBtn);
         return row;
     }
 
@@ -111,6 +122,8 @@ public class FramesPanel extends JPanel {
         deleteBtn.setEnabled(frames.size() > 1);
         leftBtn.setEnabled(state.getActiveFrameIndex() > 0);
         rightBtn.setEnabled(state.getActiveFrameIndex() < frames.size() - 1);
+        copyPrevBtn.setEnabled(state.isOnionSkinEnabled() && state.getActiveFrameIndex() > 0);
+        copyNextBtn.setEnabled(state.isOnionSkinEnabled() && state.getActiveFrameIndex() < frames.size() - 1);
 
         if (frames.size() <= 1 && playbackTimer.isRunning()) {
             togglePlayback();

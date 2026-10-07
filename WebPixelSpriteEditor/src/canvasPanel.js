@@ -318,11 +318,18 @@ PSE.CanvasPanel.prototype.render = function () {
   this._drawCheckerboard(ox, oy, w * z, h * z);
 
   if (state.onionSkin) {
-    var idx = project.activeFrameIndex - 1;
-    if (idx >= 0) {
-      var prevCanvas = project.frames[idx].compositeToCanvas();
+    var prevIdx = project.activeFrameIndex - 1;
+    if (prevIdx >= 0) {
+      var prevCanvas = project.frames[prevIdx].compositeToCanvas();
       ctx.globalAlpha = 0.35;
       ctx.drawImage(prevCanvas, ox, oy, w * z, h * z);
+      ctx.globalAlpha = 1;
+    }
+    var nextIdx = project.activeFrameIndex + 1;
+    if (nextIdx < project.frames.length) {
+      var nextCanvas = project.frames[nextIdx].compositeToCanvas();
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(nextCanvas, ox, oy, w * z, h * z);
       ctx.globalAlpha = 1;
     }
   }

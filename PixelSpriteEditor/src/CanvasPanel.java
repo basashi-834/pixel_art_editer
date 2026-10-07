@@ -20,7 +20,7 @@ import javax.swing.JPopupMenu;
  * Renders the active frame's composited layers at the current zoom with
  * nearest-neighbor scaling, an optional checkerboard behind transparent
  * pixels, an optional 1px pixel grid, an optional 16x16 block guide, an
- * optional onion-skin of the previous frame, the line tool's live preview,
+ * optional onion-skin of the previous/next frame, the line tool's live preview,
  * a selection-rectangle outline, a floating paste preview, and a
  * hover-pixel highlight -- none of which are ever part of the saved PNG,
  * only this view. Also owns pointer input: painting (delegated to the
@@ -147,6 +147,9 @@ public class CanvasPanel extends JPanel implements MouseListener, MouseMotionLis
 
             if (state.isOnionSkinEnabled() && state.getPreviousFrame() != null) {
                 drawImageScaled(g2, state.getPreviousFrame().composite(), rect, 0.35f);
+            }
+            if (state.isOnionSkinEnabled() && state.getNextFrame() != null) {
+                drawImageScaled(g2, state.getNextFrame().composite(), rect, 0.35f);
             }
             drawImageScaled(g2, state.getCompositeImage(), rect, 1.0f);
 

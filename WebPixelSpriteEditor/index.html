@@ -95,6 +95,9 @@
       <button type="button" class="panel-close" data-close-panel>×</button>
       <h4>レイヤー</h4>
       <div id="layers-list" class="layers-list"></div>
+      <div class="slider-row">
+        <label>不透明度</label><input type="range" id="slider-layer-opacity" min="0" max="100" value="100"><input type="number" id="num-layer-opacity" min="0" max="100" value="100">
+      </div>
       <div class="panel-buttons">
         <button type="button" id="btn-layer-add">+追加</button>
         <button type="button" id="btn-layer-duplicate">複製</button>
@@ -115,6 +118,8 @@
       <button type="button" id="btn-frame-right">→</button>
       <button type="button" id="btn-frame-play">▶ 再生</button>
       <label class="onion-toggle"><input type="checkbox" id="chk-onion-skin"> オニオンスキン</label>
+      <button type="button" id="btn-onion-copy-prev" title="前のフレームの内容をアクティブレイヤーにコピー">⬅コピー</button>
+      <button type="button" id="btn-onion-copy-next" title="次のフレームの内容をアクティブレイヤーにコピー">➡コピー</button>
     </div>
     <div id="frames-list"></div>
   </footer>

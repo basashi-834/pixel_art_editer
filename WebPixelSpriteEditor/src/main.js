@@ -100,6 +100,31 @@ document.addEventListener("DOMContentLoaded", function () {
     state.notifyStructureChanged();
   }
 
+  // ---- Drag & drop image load -------------------------------------------------------
+
+  var appEl = document.getElementById("app");
+  var dragDepth = 0;
+  appEl.addEventListener("dragenter", function (e) {
+    e.preventDefault();
+    dragDepth++;
+    appEl.classList.add("drag-target");
+  });
+  appEl.addEventListener("dragover", function (e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  appEl.addEventListener("dragleave", function () {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) appEl.classList.remove("drag-target");
+  });
+  appEl.addEventListener("drop", function (e) {
+    e.preventDefault();
+    dragDepth = 0;
+    appEl.classList.remove("drag-target");
+    var file = e.dataTransfer.files && e.dataTransfer.files[0];
+    PSE.FileIO.handleDroppedImageFile(state, file);
+  });
+
   // ---- Mobile bottom-sheet panel tabs ----------------------------------------------
 
   var panelTabs = document.querySelectorAll("#mobile-panel-tabs [data-panel]");

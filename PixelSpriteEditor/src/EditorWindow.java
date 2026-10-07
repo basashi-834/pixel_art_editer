@@ -2,6 +2,12 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DropTarget;
+import java.awt.dnd.DropTargetDropEvent;
+import java.awt.dnd.DropTargetAdapter;
 import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
@@ -9,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.awt.image.BufferedImage;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
@@ -86,6 +93,8 @@ public class EditorWindow extends JFrame {
 
         state.addChangeListener(this::refreshChrome);
         refreshChrome();
+
+        installImageDropTarget();
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(1300, 780);
@@ -243,6 +252,61 @@ public class EditorWindow extends JFrame {
         bar.add(statusLeft, BorderLayout.WEST);
         bar.add(statusRight, BorderLayout.EAST);
         return bar;
+    }
+
+    // ---- drag & drop image load ---------------------------------------------
+
+    /**
+     * Dropping an image file anywhere on the window loads it: if the canvas
+     * is still blank (pristine), it behaves like File > Open (replaces the
+     * project, sized to the image). Otherwise work is already in progress,
+     * so the image is added as a new layer on the active frame instead of
+     * overwriting it.
+     */
+    private void installImageDropTarget() {
+        new DropTarget(getContentPane(), DnDConstants.ACTION_COPY, new DropTargetAdapter() {
+            @Override
+            public void drop(DropTargetDropEvent evt) {
+                evt.acceptDrop(DnDConstants.ACTION_COPY);
+                try {
+                    Transferable t = evt.getTransferable();
+                    if (!t.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        evt.dropComplete(false);
+                        return;
+                    }
+                    @SuppressWarnings("unchecked")
+                    List<File> files = (List<File>) t.getTransferData(DataFlavor.javaFileListFlavor);
+                    evt.dropComplete(true);
+                    if (!files.isEmpty()) {
+                        handleDroppedImageFile(files.get(0));
+                    }
+                } catch (Exception ex) {
+                    evt.dropComplete(false);
+                    showError("画像の読み込みに失敗しました:\n" + ex.getMessage());
+                }
+            }
+        }, true);
+    }
+
+    private void handleDroppedImageFile(File file) {
+        BufferedImage img;
+        try {
+            img = ImageIO.read(file);
+        } catch (IOException ex) {
+            showError("画像を読み込めませんでした:\n" + ex.getMessage());
+            return;
+        }
+        if (img == null) {
+            showError("画像を読み込めませんでした: " + file.getName());
+            return;
+        }
+        if (state.isPristine()) {
+            state.loadFrom(img, file.getAbsolutePath());
+            canvasPanel.centerCamera();
+        } else {
+            String name = file.getName().replaceFirst("\\.[^.]+$", "");
+            state.addImageAsNewLayer(img, name);
+        }
     }
 
     // ---- file operations (single-image PNG) --------------------------------

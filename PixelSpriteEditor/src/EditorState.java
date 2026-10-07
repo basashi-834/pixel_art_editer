@@ -171,6 +171,32 @@ public class EditorState {
         return activeFrameIndex > 0 ? frames.get(activeFrameIndex - 1) : null;
     }
 
+    /** The frame just after the active one, or null if the active frame is last -- used for onion skin. */
+    public Frame getNextFrame() {
+        return activeFrameIndex < frames.size() - 1 ? frames.get(activeFrameIndex + 1) : null;
+    }
+
+    /**
+     * Copies the composited content of the frame at activeFrameIndex + offset
+     * (-1 = previous, +1 = next -- the same frame onion skin fades in behind
+     * the current one) onto the active layer of the current frame, as one
+     * undo step. No-op if there is no frame at that offset.
+     */
+    public void copyFromFrame(int offset) {
+        int srcIndex = activeFrameIndex + offset;
+        if (srcIndex < 0 || srcIndex >= frames.size()) return;
+        BufferedImage src = frames.get(srcIndex).composite();
+        PixelCanvas canvas = getCanvas();
+        beginStroke();
+        for (int y = 0; y < canvas.getHeight(); y++) {
+            for (int x = 0; x < canvas.getWidth(); x++) {
+                int argb = (x < src.getWidth() && y < src.getHeight()) ? src.getRGB(x, y) : 0;
+                paintPixel(x, y, argb);
+            }
+        }
+        endStroke();
+    }
+
     // ---- layers (of the active frame) --------------------------------------
 
     public List<Layer> getLayers() {
@@ -212,6 +238,11 @@ public class EditorState {
 
     public void setLayerVisible(int index, boolean visible) {
         getLayers().get(index).setVisible(visible);
+        fireChanged();
+    }
+
+    public void setLayerOpacity(int index, float opacity) {
+        getLayers().get(index).setOpacity(opacity);
         fireChanged();
     }
 
@@ -314,6 +345,31 @@ public class EditorState {
         }
         selection = null;
         pasteModeActive = false;
+        fireChanged();
+    }
+
+    /**
+     * True when nothing has been drawn yet (one frame, one blank layer) --
+     * used to decide whether a dropped image file should replace the
+     * project or be added as a new layer on top of work already in
+     * progress.
+     */
+    public boolean isPristine() {
+        if (frames.size() != 1) return false;
+        List<Layer> layers = frames.get(0).getLayers();
+        if (layers.size() != 1) return false;
+        PixelCanvas canvas = layers.get(0).getCanvas();
+        for (int y = 0; y < canvas.getHeight(); y++) {
+            for (int x = 0; x < canvas.getWidth(); x++) {
+                if ((canvas.getPixel(x, y) >>> 24) != 0) return false;
+            }
+        }
+        return true;
+    }
+
+    /** Adds image as a new layer on the active frame, sized to it, without touching existing layers. */
+    public void addImageAsNewLayer(BufferedImage image, String name) {
+        getActiveFrame().addImageAsLayer(image, name);
         fireChanged();
     }
 
