@@ -47,7 +47,18 @@ public class LayersPanel extends JPanel {
     // to whichever row received the mousePressed, even once the cursor
     // leaves that row's bounds, so a plain MouseMotionListener per row is
     // enough -- no need for Swing's heavier TransferHandler/DnD API.
+    //
+    // Selection must NOT happen in mousePressed: state.setActiveLayerIndex()
+    // fires a change event that makes refresh() rebuild every row component
+    // immediately, which would tear down the very row AWT just started a
+    // mouse grab on -- breaking mouseDragged/mouseReleased delivery for the
+    // rest of the gesture. So mousePressed only records where the drag
+    // started, and mouseReleased decides afterwards whether it was a plain
+    // click (select) or an actual drag past DRAG_THRESHOLD (reorder).
+    private static final int DRAG_THRESHOLD = 4;
     private int dragSourceIndex = -1;
+    private Point dragStartScreenPoint;
+    private boolean dragMoved;
     private JPanel dragHighlightRow;
 
     public LayersPanel(EditorState state) {
@@ -162,19 +173,26 @@ public class LayersPanel extends JPanel {
         MouseAdapter dragSelectListener = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                state.setActiveLayerIndex(index);
                 dragSourceIndex = index;
+                dragStartScreenPoint = e.getLocationOnScreen();
+                dragMoved = false;
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
                 if (dragSourceIndex < 0) return;
-                int target = rowIndexAtScreenPoint(e.getLocationOnScreen());
                 int from = dragSourceIndex;
+                boolean moved = dragMoved;
+                int target = rowIndexAtScreenPoint(e.getLocationOnScreen());
                 dragSourceIndex = -1;
+                dragMoved = false;
                 clearDragHighlight();
-                if (target >= 0 && target != from) {
-                    state.moveLayer(from, target);
+                if (moved) {
+                    if (target >= 0 && target != from) {
+                        state.moveLayer(from, target);
+                    }
+                } else {
+                    state.setActiveLayerIndex(from);
                 }
             }
         };
@@ -182,6 +200,12 @@ public class LayersPanel extends JPanel {
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (dragSourceIndex < 0) return;
+                if (!dragMoved) {
+                    Point now = e.getLocationOnScreen();
+                    double dist = now.distance(dragStartScreenPoint);
+                    if (dist < DRAG_THRESHOLD) return;
+                    dragMoved = true;
+                }
                 highlightDragTarget(rowIndexAtScreenPoint(e.getLocationOnScreen()));
             }
         };

@@ -4,6 +4,13 @@
 // thumbnail per row, and an opacity slider for the active layer. Layer
 // add/delete/reorder are intentionally NOT undoable, mirroring the desktop
 // app's documented limitation.
+//
+// Reordering uses Pointer Events rather than the native HTML5 drag-and-drop
+// API (draggable/dragstart/dragover/drop): that API turned out unreliable
+// here -- dragover kept firing but drop would silently never happen -- and
+// it doesn't work at all for touch on iOS Safari, which this app targets.
+// Pointer Events are the same mechanism CanvasPanel already uses for
+// drawing, so this gets working mouse *and* touch reordering for free.
 var PSE = window.PSE || (window.PSE = {});
 
 PSE.LayersPanel = function (state, root) {
@@ -17,7 +24,16 @@ PSE.LayersPanel = function (state, root) {
   this.btnDown = root.querySelector("#btn-layer-down");
   this.sliderOpacity = root.querySelector("#slider-layer-opacity");
   this.numOpacity = root.querySelector("#num-layer-opacity");
-  this._dragIndex = null;
+
+  // Drag-to-reorder state, tracked across the whole gesture (set in
+  // pointerdown, read/updated in pointermove, consumed in pointerup).
+  this._dragPointerId = null;
+  this._dragFromIndex = null;
+  this._dragStartX = 0;
+  this._dragStartY = 0;
+  this._dragMoved = false;
+  this._dragOverRow = null;
+
   this._bind();
   this.render();
 
@@ -103,6 +119,26 @@ PSE.LayersPanel.prototype._moveLayer = function (from, to) {
   this.state.notifyStructureChanged();
 };
 
+// Which row (by layer index, via the row's data-layer-index attribute) a
+// client-space point lands on, or null if none.
+PSE.LayersPanel.prototype._rowAtPoint = function (clientX, clientY) {
+  var rows = this.listEl.children;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i].getBoundingClientRect();
+    if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+      return rows[i];
+    }
+  }
+  return null;
+};
+
+PSE.LayersPanel.prototype._setDragOverRow = function (row) {
+  if (row === this._dragOverRow) return;
+  if (this._dragOverRow) this._dragOverRow.classList.remove("drag-over");
+  this._dragOverRow = row;
+  if (row) row.classList.add("drag-over");
+};
+
 PSE.LayersPanel.prototype.render = function () {
   var state = this.state;
   var frame = state.project.activeFrame();
@@ -116,7 +152,8 @@ PSE.LayersPanel.prototype.render = function () {
       var layer = frame.layers[i];
       var row = document.createElement("div");
       row.className = "layer-row" + (i === frame.activeLayerIndex ? " active" : "");
-      row.draggable = true;
+      row.dataset.layerIndex = String(i);
+      row.style.touchAction = "none";
 
       var checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -142,33 +179,52 @@ PSE.LayersPanel.prototype.render = function () {
       row.appendChild(checkbox);
       row.appendChild(thumb);
       row.appendChild(label);
-      row.addEventListener("click", function () {
-        frame.activeLayerIndex = i;
-        state.notifyStructureChanged();
-      });
 
-      row.addEventListener("dragstart", function (e) {
-        self._dragIndex = i;
-        row.classList.add("dragging");
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(i));
+      row.addEventListener("pointerdown", function (e) {
+        if (e.target === checkbox || (e.button !== undefined && e.button !== 0)) return;
+        self._dragPointerId = e.pointerId;
+        self._dragFromIndex = i;
+        self._dragStartX = e.clientX;
+        self._dragStartY = e.clientY;
+        self._dragMoved = false;
+        row.setPointerCapture(e.pointerId);
       });
-      row.addEventListener("dragend", function () {
+      row.addEventListener("pointermove", function (e) {
+        if (self._dragPointerId !== e.pointerId || self._dragFromIndex == null) return;
+        var dx = e.clientX - self._dragStartX, dy = e.clientY - self._dragStartY;
+        if (!self._dragMoved) {
+          if (Math.hypot(dx, dy) < 6) return; // small clicks shouldn't start a drag
+          self._dragMoved = true;
+          row.classList.add("dragging");
+        }
+        self._setDragOverRow(self._rowAtPoint(e.clientX, e.clientY));
+      });
+      row.addEventListener("pointerup", function (e) {
+        if (self._dragPointerId !== e.pointerId) return;
+        row.releasePointerCapture(e.pointerId);
+        var from = self._dragFromIndex;
+        var moved = self._dragMoved;
+        var overRow = self._dragOverRow;
+        self._dragPointerId = null;
+        self._dragFromIndex = null;
+        self._dragMoved = false;
         row.classList.remove("dragging");
-        self._dragIndex = null;
+        self._setDragOverRow(null);
+
+        if (moved) {
+          if (overRow) self._moveLayer(from, Number(overRow.dataset.layerIndex));
+        } else {
+          frame.activeLayerIndex = from;
+          state.notifyStructureChanged();
+        }
       });
-      row.addEventListener("dragover", function (e) {
-        if (self._dragIndex == null) return;
-        e.preventDefault();
-        row.classList.add("drag-over");
-      });
-      row.addEventListener("dragleave", function () {
-        row.classList.remove("drag-over");
-      });
-      row.addEventListener("drop", function (e) {
-        e.preventDefault();
-        row.classList.remove("drag-over");
-        self._moveLayer(self._dragIndex, i);
+      row.addEventListener("pointercancel", function (e) {
+        if (self._dragPointerId !== e.pointerId) return;
+        self._dragPointerId = null;
+        self._dragFromIndex = null;
+        self._dragMoved = false;
+        row.classList.remove("dragging");
+        self._setDragOverRow(null);
       });
 
       listEl.appendChild(row);
